@@ -57,10 +57,11 @@ public func runDownload(
     var r = record
     r.state = .downloading
     var restarted = false
+    var singleConnection = false
     while true {
         do {
             if needsPrepare(r) {
-                try await prepare(&r, streamer: streamer, maxAttempts: maxAttempts, retryDelay: retryDelay)
+                try await prepare(&r, streamer: streamer, maxAttempts: maxAttempts, retryDelay: retryDelay, singleConnection: singleConnection)
             }
             if r.resumable {
                 try await transferSegments(&r, streamer: streamer, maxAttempts: maxAttempts, retryDelay: retryDelay, onProgress: onProgress)
@@ -69,8 +70,10 @@ public func runDownload(
             }
             try finish(&r)
             return r
-        } catch DownloadError.fileChanged where !restarted {
-            restarted = true
+        } catch DownloadError.fileChanged where !singleConnection {
+            // First time the file may really have changed: start over. Second time the server
+            // answers If-Range inconsistently (e.g. per-node ETags): stop splitting.
+            if restarted { singleConnection = true } else { restarted = true }
             discardPartial(&r)
         } catch {
             r.state = Task.isCancelled || error is CancellationError ? .paused : .failed(describe(error))
@@ -85,14 +88,14 @@ private func needsPrepare(_ r: DownloadRecord) -> Bool {
 }
 
 /// Probes the server and creates a fresh temp file sized for the download.
-private func prepare(_ r: inout DownloadRecord, streamer: HTTPStreamer, maxAttempts: Int, retryDelay: @escaping @Sendable (Int) -> Duration) async throws {
+private func prepare(_ r: inout DownloadRecord, streamer: HTTPStreamer, maxAttempts: Int, retryDelay: @escaping @Sendable (Int) -> Duration, singleConnection: Bool) async throws {
     let current = r
     let info = try await withRetry(maxAttempts, retryDelay) { try await probe(current, streamer: streamer) }
     discardPartial(&r)
     r.filename = sanitizeFilename(r.filename ?? info.filename)
     r.totalBytes = info.totalBytes
     r.etag = info.validator
-    r.resumable = info.acceptsRanges && info.totalBytes != nil
+    r.resumable = !singleConnection && info.acceptsRanges && info.totalBytes != nil
     r.segments = r.resumable
         ? makeSegments(total: info.totalBytes!)
         : [Segment(start: 0, end: (info.totalBytes ?? .max) - 1)]

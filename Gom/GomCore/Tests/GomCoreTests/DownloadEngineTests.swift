@@ -102,6 +102,20 @@ import Testing
         #expect(try leftoverTempFiles(dir).isEmpty)
     }
 
+    @Test func inconsistentETagsFallBackToSingleConnection() async throws {
+        let dir = try makeTempDir()
+        let data = testData(5_000_000)
+        var config = MockFile.Config(data: data)
+        config.rotateETag = true
+        let (url, _) = MockServer.serve(config)
+
+        let result = await runDownload(DownloadRecord(url: url, directory: dir), streamer: MockServer.streamer(), retryDelay: noDelay)
+
+        #expect(result.state == .completed)
+        #expect(result.resumable == false)
+        #expect(try contents(result) == data)
+    }
+
     @Test func transientFailuresAreRetried() async throws {
         let dir = try makeTempDir()
         let data = testData(5_000_000)

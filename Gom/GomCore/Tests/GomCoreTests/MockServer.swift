@@ -14,6 +14,7 @@ final class MockFile: Sendable {
         var chunkSize = 64 * 1024
         var chunkDelay: TimeInterval = 0
         var requests: [URLRequest] = []
+        var rotateETag = false         // every response carries a new ETag, like a server farm with per-node ETags
     }
 
     let state: Mutex<Config>
@@ -100,6 +101,8 @@ final class MockURLProtocol: URLProtocol, @unchecked Sendable {
 
     static func respond(to request: URLRequest, config: MockFile.Config) -> (Int, [String: String], Data) {
         var headers = config.extraHeaders
+        var config = config
+        if config.rotateETag { config.etag = "\"\(UUID().uuidString)\"" }
         if let etag = config.etag { headers["ETag"] = etag }
         if let status = config.status { return (status, headers, Data()) }
         let total = config.data.count
