@@ -116,6 +116,20 @@ import Testing
         #expect(try contents(result) == data)
     }
 
+    @Test func sortsIntoCategoryOnceServerNamesTheFile() async throws {
+        let dir = try makeTempDir()
+        let data = testData(100_000)
+        let (url, _) = MockServer.serve(.init(data: data), path: "/report.pdf")
+        let record = DownloadRecord(url: url, directory: dir, categories: defaultFileCategories)
+
+        let result = await runDownload(record, streamer: MockServer.streamer(), retryDelay: noDelay)
+
+        #expect(result.state == .completed)
+        #expect(result.directory == dir.appending(path: "Documents", directoryHint: .isDirectory))
+        #expect(result.categories == nil)
+        #expect(try contents(result) == data)
+    }
+
     @Test func transientFailuresAreRetried() async throws {
         let dir = try makeTempDir()
         let data = testData(5_000_000)

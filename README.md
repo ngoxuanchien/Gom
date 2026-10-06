@@ -11,6 +11,7 @@
 - Add downloads by pasting a URL or dragging a link into the window.
 - Chrome / Arc / Brave / Edge extension that intercepts downloads (optionally only above a size threshold) and sends them to Gom, with cookies and Referer so logged-in downloads work. If Gom is not running, the browser downloads the file itself.
 - Downloads from the browser bring Gom to the front and ask which folder to save into.
+- Sorts downloads into subfolders by file type (Documents, Compressed, Music, Video, Programs, Images); folders and extensions are editable in Settings.
 - No external dependencies: Swift, SwiftUI and Network.framework only.
 
 ## Requirements
@@ -60,4 +61,4 @@ The extension talks to the app over `http://127.0.0.1:47615`, authenticated by a
 ## Roadmap
 
 - Phase 2: video downloads via `yt-dlp`.
-- Phase 3: scheduled downloads and sorting files by type.
+- Phase 3: scheduled downloads.

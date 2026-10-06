@@ -40,12 +40,12 @@ public final class DownloadQueue {
     public var activeCount: Int { running.count }
 
     @discardableResult
-    public func add(url: URL, headers: [String: String] = [:], filename: String? = nil, directory: URL) -> UUID {
+    public func add(url: URL, headers: [String: String] = [:], filename: String? = nil, directory: URL, categories: [FileCategory]? = nil) -> UUID {
         if let existing = items.first(where: { $0.url == url && $0.state != .completed }) {
             highlighted = existing.id
             return existing.id
         }
-        let record = DownloadRecord(url: url, headers: headers, filename: filename.map(sanitizeFilename), directory: directory)
+        let record = DownloadRecord(url: url, headers: headers, filename: filename.map(sanitizeFilename), directory: directory, categories: categories)
         items.append(record)
         persist()
         schedule()

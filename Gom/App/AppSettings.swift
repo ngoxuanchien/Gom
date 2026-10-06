@@ -14,6 +14,20 @@ enum AppSettings {
         return path.isEmpty ? .downloadsDirectory : URL(filePath: path, directoryHint: .isDirectory)
     }
 
+    static var sortByType: Bool { defaults.object(forKey: "sortByType") as? Bool ?? true }
+
+    /// Edited in SettingsView; stored as JSON.
+    static var categories: [FileCategory] {
+        get { defaults.data(forKey: "fileCategories").flatMap { try? JSONDecoder().decode([FileCategory].self, from: $0) } ?? defaultFileCategories }
+        set { defaults.set(try? JSONEncoder().encode(newValue), forKey: "fileCategories") }
+    }
+
+    /// Where `filename` is saved: its type's subfolder when sorting is on, else the download folder.
+    static func directory(for filename: String) -> URL {
+        guard sortByType, let folder = categoryFolder(for: filename, in: categories) else { return downloadDirectory }
+        return downloadDirectory.appending(path: folder, directoryHint: .isDirectory)
+    }
+
     static func ensureToken() {
         if token.isEmpty { defaults.set(generateToken(), forKey: "token") }
     }

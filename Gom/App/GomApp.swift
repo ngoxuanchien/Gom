@@ -87,7 +87,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panel.canChooseFiles = false
         panel.canChooseDirectories = true
         panel.canCreateDirectories = true
-        panel.directoryURL = AppSettings.downloadDirectory
+        // Start in the file's category folder; it must exist for the panel to open there.
+        let directory = AppSettings.directory(for: add.filename ?? add.url.lastPathComponent)
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        panel.directoryURL = directory
         panel.prompt = "Save Here"
         panel.message = "Choose where to save \(add.filename ?? add.url.lastPathComponent)"
         panel.begin { response in

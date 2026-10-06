@@ -35,6 +35,28 @@ import Testing
         #expect(uniqueDestination(in: dir, filename: "README").lastPathComponent == "README (1)")
     }
 
+    @Test func categoryFolderMatchesExtension() {
+        let defaults = defaultFileCategories
+        #expect(categoryFolder(for: "A5-convex-hulls.pdf", in: defaults) == "Documents")
+        #expect(categoryFolder(for: "backup.tar.GZ", in: defaults) == "Compressed")
+        #expect(categoryFolder(for: "Xcode.dmg", in: defaults) == "Programs")
+        #expect(categoryFolder(for: "README", in: defaults) == nil)
+        #expect(categoryFolder(for: "data.unknownext", in: defaults) == nil)
+    }
+
+    @Test func categoryFolderUsesEditedCategories() {
+        let custom = [
+            FileCategory(folder: "  ", extensions: "txt"),
+            FileCategory(folder: "Sách", extensions: ".PDF, Epub"),
+            FileCategory(folder: "../Escape", extensions: "zip"),
+        ]
+        #expect(categoryFolder(for: "a.pdf", in: custom) == "Sách")
+        #expect(categoryFolder(for: "a.epub", in: custom) == "Sách")
+        #expect(categoryFolder(for: "a.txt", in: custom) == nil)
+        #expect(categoryFolder(for: "a.zip", in: custom) == "Escape")
+        #expect(categoryFolder(for: "a.p", in: custom) == nil)
+    }
+
     @Test func parseURLListKeepsOnlyHTTP() {
         let text = """
         https://example.com/a.iso

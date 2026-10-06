@@ -11,6 +11,8 @@ public struct DownloadRecord: Codable, Identifiable, Equatable, Sendable {
     public var headers: [String: String]
     public var filename: String?
     public var directory: URL
+    /// Set when the file goes into a category subfolder of `directory` once its name is known; cleared after.
+    public var categories: [FileCategory]?
     public var totalBytes: Int64?
     public var etag: String?
     public var resumable: Bool
@@ -18,12 +20,13 @@ public struct DownloadRecord: Codable, Identifiable, Equatable, Sendable {
     public var state: DownloadState
     public var addedAt: Date
 
-    public init(url: URL, headers: [String: String] = [:], filename: String? = nil, directory: URL, id: UUID = UUID(), addedAt: Date = .now) {
+    public init(url: URL, headers: [String: String] = [:], filename: String? = nil, directory: URL, categories: [FileCategory]? = nil, id: UUID = UUID(), addedAt: Date = .now) {
         self.id = id
         self.url = url
         self.headers = headers
         self.filename = filename
         self.directory = directory
+        self.categories = categories
         self.totalBytes = nil
         self.etag = nil
         self.resumable = false

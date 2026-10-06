@@ -39,3 +39,38 @@ public func uniqueDestination(in directory: URL, filename: String) -> URL {
         counter += 1
     }
 }
+
+/// A subfolder of the download folder and the extensions sorted into it.
+public struct FileCategory: Codable, Hashable, Identifiable, Sendable {
+    public var id: UUID
+    public var folder: String
+    /// As typed in Settings: separated by spaces or commas, leading dots allowed.
+    public var extensions: String
+
+    public init(folder: String, extensions: String, id: UUID = UUID()) {
+        self.id = id
+        self.folder = folder
+        self.extensions = extensions
+    }
+}
+
+/// Default folder tree inside the download folder.
+public let defaultFileCategories: [FileCategory] = [
+    FileCategory(folder: "Documents", extensions: "pdf doc docx xls xlsx ppt pptx odt ods odp rtf txt csv md epub pages numbers key"),
+    FileCategory(folder: "Compressed", extensions: "zip rar 7z tar gz tgz bz2 xz zst"),
+    FileCategory(folder: "Music", extensions: "mp3 m4a aac flac wav ogg opus"),
+    FileCategory(folder: "Video", extensions: "mp4 mkv mov avi webm m4v flv wmv"),
+    FileCategory(folder: "Programs", extensions: "dmg pkg exe msi deb rpm apk iso"),
+    FileCategory(folder: "Images", extensions: "jpg jpeg png gif webp heic svg bmp tiff"),
+]
+
+/// The first category subfolder listing `filename`'s extension, or nil to keep it at the top of the download folder.
+public func categoryFolder(for filename: String, in categories: [FileCategory]) -> String? {
+    let ext = (filename as NSString).pathExtension.lowercased()
+    guard !ext.isEmpty else { return nil }
+    let match = categories.first { category in
+        category.extensions.lowercased().split(whereSeparator: { $0 == " " || $0 == "," || $0 == "." }).contains { $0 == ext }
+    }
+    guard let folder = match?.folder.trimmingCharacters(in: .whitespaces), !folder.isEmpty else { return nil }
+    return sanitizeFilename(folder)   // typed by the user, but must stay one level inside the download folder
+}
