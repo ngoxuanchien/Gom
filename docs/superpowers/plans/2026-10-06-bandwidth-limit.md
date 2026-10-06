@@ -59,3 +59,12 @@
 - [ ] Run a local Range-capable HTTP server in the scratchpad serving a ~200 MB file.
 - [ ] Launch the built app, set 500 KB/s, add the URL; row speed ≈ 500 KB/s, memory flat.
 - [ ] Set 0 mid-download → speed jumps. Screenshot.
+
+### Task 4 (revision): Paced range requests instead of suspending tasks
+
+Manual testing against a real server showed the delegate throttle didn't hold the cap (~29% over, stalled connections). Replaced per the revised spec.
+
+- [x] `BandwidthLimiter` (GCRA, waits for slot end, re-reserves on limit change) + `pieceSize(for:)`; `HTTPStreamer.bytesPerSecond` backed by it; delegate throttle and the suspend-aware mock removed.
+- [x] `fetchSegment` fetches `pieceSize` ranges after `acquire`, switches to pieces when a limit arrives mid-request; `transferSingle` acquires per chunk.
+- [x] Tests: piece-sized requests, live lower, no-ranges pacing, limiter unit test; `swift test` ×3.
+- [x] Manual, 300 MB over a local server: steady 495 KB/s at 500, 197 KB/s after lowering to 200 live, RSS flat ~138–160 MB, setting 0 finishes the rest in < 4 s, SHA-256 matches.

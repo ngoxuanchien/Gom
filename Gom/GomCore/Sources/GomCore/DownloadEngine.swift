@@ -165,35 +165,49 @@ private func fetchSegment(
 ) async throws {
     let segment = box.segment(index)
     guard !segment.isComplete, let temp = base.tempURL else { return }
-    var request = makeRequest(base)
-    request.setValue("bytes=\(segment.nextOffset)-\(segment.end)", forHTTPHeaderField: "Range")
-    if let etag = base.etag { request.setValue(etag, forHTTPHeaderField: "If-Range") }
-
     let handle = try FileHandle(forWritingTo: temp)
     defer { try? handle.close() }
     try handle.seek(toOffset: UInt64(segment.nextOffset))
     var offset = segment.nextOffset
+    let limiter = streamer.limiter
 
-    for try await event in streamer.stream(request) {
-        switch event {
-        case .response(let response):
-            // 200 to a range request: the file changed (If-Range failed) or ranges stopped working.
-            if response.statusCode == 200 { throw DownloadError.fileChanged }
-            guard response.statusCode == 206 else { throw DownloadError.httpStatus(response.statusCode) }
-        case .data(let data):
-            let chunk = data.prefix(Int(segment.end + 1 - offset))
-            try handle.write(contentsOf: chunk)
-            offset += Int64(chunk.count)
-            box.add(Int64(chunk.count), to: index)
-            if box.shouldReport() {
-                var snapshot = base
-                snapshot.segments = box.snapshot
-                onProgress(snapshot)
+    // Under a speed limit the range is fetched in pieces, each request sent only once the shared
+    // bucket has room for it, so the network never runs ahead of the cap. Unlimited: one request.
+    while offset <= segment.end {
+        let rate = limiter.bytesPerSecond
+        let last = rate > 0 ? min(segment.end, offset + Int64(pieceSize(for: rate)) - 1) : segment.end
+        if rate > 0 { try await limiter.acquire(Int(last - offset + 1)) }
+        var request = makeRequest(base)
+        request.setValue("bytes=\(offset)-\(last)", forHTTPHeaderField: "Range")
+        if let etag = base.etag { request.setValue(etag, forHTTPHeaderField: "If-Range") }
+
+        var limitArrived = false
+        response: for try await event in streamer.stream(request) {
+            switch event {
+            case .response(let response):
+                // 200 to a range request: the file changed (If-Range failed) or ranges stopped working.
+                if response.statusCode == 200 { throw DownloadError.fileChanged }
+                guard response.statusCode == 206 else { throw DownloadError.httpStatus(response.statusCode) }
+            case .data(let data):
+                let chunk = data.prefix(Int(last + 1 - offset))
+                try handle.write(contentsOf: chunk)
+                offset += Int64(chunk.count)
+                box.add(Int64(chunk.count), to: index)
+                if box.shouldReport() {
+                    var snapshot = base
+                    snapshot.segments = box.snapshot
+                    onProgress(snapshot)
+                }
+                // A limit set during an unlimited request: carry on in paced pieces from here.
+                if rate == 0, limiter.bytesPerSecond > 0 {
+                    limitArrived = true
+                    break response
+                }
             }
         }
+        try Task.checkCancellation()
+        if offset <= last && !limitArrived { throw DownloadError.incomplete }
     }
-    try Task.checkCancellation()
-    if offset <= segment.end { throw DownloadError.incomplete }
 }
 
 /// Servers without range support: one GET, restarted from zero on every attempt.
@@ -219,6 +233,9 @@ private func transferSingle(
             case .data(let data):
                 try handle.write(contentsOf: data)
                 r.segments[0].done += Int64(data.count)
+                // ponytail: no ranges to split, so this only paces the reader; URLSession keeps reading
+                // ahead into memory. Pause/resume the response (or a pull-based client) if that bites.
+                try await streamer.limiter.acquire(data.count)
                 if ContinuousClock.now - lastReport >= .milliseconds(500) {
                     lastReport = .now
                     onProgress(r)
