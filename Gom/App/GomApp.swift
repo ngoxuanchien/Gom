@@ -18,7 +18,7 @@ struct GomApp: App {
         }
         .menuBarExtraStyle(.window)
         Settings {
-            SettingsView()
+            SettingsView(queue: appDelegate.queue)
         }
     }
 }
@@ -37,6 +37,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         AppSettings.ensureToken()
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
         queue.onFinished = Self.notify
+        queue.bandwidthLimit = max(0, AppSettings.speedLimitKB) * 1000
         startBridge()
     }
 

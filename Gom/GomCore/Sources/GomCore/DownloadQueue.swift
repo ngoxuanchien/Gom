@@ -40,6 +40,12 @@ public final class DownloadQueue {
 
     public var activeCount: Int { running.count }
 
+    /// Combined speed cap for all downloads in bytes/s; 0 = unlimited. Applies to running downloads at once.
+    public var bandwidthLimit: Int {
+        get { streamer.bytesPerSecond }
+        set { streamer.bytesPerSecond = newValue }
+    }
+
     @discardableResult
     public func add(url: URL, headers: [String: String] = [:], filename: String? = nil, directory: URL, categories: [FileCategory]? = nil) -> UUID {
         if let existing = items.first(where: { $0.url == url && $0.state != .completed }) {

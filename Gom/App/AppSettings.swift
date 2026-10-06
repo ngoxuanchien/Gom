@@ -16,6 +16,8 @@ enum AppSettings {
 
     static var sortByType: Bool { defaults.object(forKey: "sortByType") as? Bool ?? true }
     static var notifications: Bool { defaults.object(forKey: "notifications") as? Bool ?? true }
+    /// Combined download speed cap in KB/s (1 KB = 1000 bytes, like the speeds shown); 0 = unlimited.
+    static var speedLimitKB: Int { defaults.integer(forKey: "speedLimitKB") }
 
     /// Edited in SettingsView; stored as JSON.
     static var categories: [FileCategory] {

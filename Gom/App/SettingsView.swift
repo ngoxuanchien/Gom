@@ -4,9 +4,11 @@ import SwiftUI
 import UserNotifications
 
 struct SettingsView: View {
+    let queue: DownloadQueue
     @AppStorage("downloadDirectory") private var directoryPath = ""
     @AppStorage("sortByType") private var sortByType = true
     @AppStorage("notifications") private var notifications = true
+    @AppStorage("speedLimitKB") private var speedLimitKB = 0
     @AppStorage("port") private var port = AppSettings.defaultPort
     @AppStorage("token") private var token = ""
     @State private var categories = AppSettings.categories
@@ -24,6 +26,15 @@ struct SettingsView: View {
                         Button("Choose…") { choosingFolder = true }
                     }
                 }
+                LabeledContent("Speed limit") {
+                    HStack {
+                        TextField("Speed limit", value: $speedLimitKB, format: .number.grouping(.never))
+                            .labelsHidden()
+                            .multilineTextAlignment(.trailing)
+                            .frame(width: 80)
+                        Text("KB/s")
+                    }
+                }
                 Toggle("Sort into folders by file type", isOn: $sortByType)
                 Toggle("Show notifications", isOn: $notifications)
                 if notifications && notificationsDenied {
@@ -36,6 +47,10 @@ struct SettingsView: View {
                 }
             } header: {
                 Text("Downloads")
+            } footer: {
+                Text("Speed limit caps all downloads together. 0 = unlimited.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
             Section {
                 ForEach($categories) { $category in
@@ -94,6 +109,10 @@ struct SettingsView: View {
             if case .success(let url) = result { directoryPath = url.path(percentEncoded: false) }
         }
         .onChange(of: categories) { AppSettings.categories = $1 }
+        .onChange(of: speedLimitKB) {
+            if $1 < 0 { speedLimitKB = 0 }
+            queue.bandwidthLimit = max(0, $1) * 1000
+        }
         // Re-checked when the user comes back from System Settings.
         .task { await checkNotifications() }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
