@@ -5,6 +5,7 @@ import SwiftUI
 struct SettingsView: View {
     @AppStorage("downloadDirectory") private var directoryPath = ""
     @AppStorage("sortByType") private var sortByType = true
+    @AppStorage("notifications") private var notifications = true
     @AppStorage("port") private var port = AppSettings.defaultPort
     @AppStorage("token") private var token = ""
     @State private var categories = AppSettings.categories
@@ -22,6 +23,7 @@ struct SettingsView: View {
                     }
                 }
                 Toggle("Sort into folders by file type", isOn: $sortByType)
+                Toggle("Show notifications", isOn: $notifications)
             } header: {
                 Text("Downloads")
             }

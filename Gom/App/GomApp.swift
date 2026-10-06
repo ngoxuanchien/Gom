@@ -22,15 +22,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let queue = DownloadQueue(store: .appSupport)
     private var server: BridgeServer?
 
+    /// Set before launch finishes so a click on a notification that launched Gom is delivered.
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        UNUserNotificationCenter.current().delegate = self
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         AppSettings.ensureToken()
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
-        queue.onCompleted = { record in
-            let content = UNMutableNotificationContent()
-            content.title = "Download complete"
-            content.body = record.filename ?? record.url.absoluteString
-            UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: record.id.uuidString, content: content, trigger: nil))
-        }
+        queue.onFinished = Self.notify
         startBridge()
     }
 
@@ -69,6 +69,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    private static func notify(_ record: DownloadRecord) {
+        guard AppSettings.notifications else { return }
+        let name = record.filename ?? record.url.absoluteString
+        let content = UNMutableNotificationContent()
+        switch record.state {
+        case .completed:
+            content.title = "Download complete"
+            content.body = name
+            if let file = record.fileURL { content.userInfo = ["path": file.path(percentEncoded: false)] }
+        case .failed(let error):
+            content.title = "Download failed"
+            content.body = "\(name) — \(error)"
+        default:
+            return
+        }
+        UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: record.id.uuidString, content: content, trigger: nil))
+    }
+
     private static func showMainWindow() {
         // Plain activate() is cooperative and the browser in front won't yield, so force it.
         NSApp.activate(ignoringOtherApps: true)
@@ -103,5 +121,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         alert.messageText = "Gom can't listen on port \(AppSettings.port)"
         alert.informativeText = "The browser extension won't work until this is fixed. Change the port in Settings and relaunch.\n\n\(error.localizedDescription)"
         alert.runModal()
+    }
+}
+
+extension AppDelegate: UNUserNotificationCenterDelegate {
+    /// Success reveals the file in Finder; failure brings Gom forward so the user can retry.
+    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
+        let path = response.notification.request.content.userInfo["path"] as? String
+        await MainActor.run {
+            if let path {
+                NSWorkspace.shared.activateFileViewerSelecting([URL(filePath: path)])
+            } else {
+                Self.showMainWindow()
+            }
+        }
     }
 }

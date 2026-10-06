@@ -7,7 +7,8 @@ public final class DownloadQueue {
     public private(set) var items: [DownloadRecord] = []
     public private(set) var speeds: [UUID: Double] = [:]
     public var highlighted: UUID?
-    @ObservationIgnored public var onCompleted: ((DownloadRecord) -> Void)?
+    /// Called when a download ends completed or failed; not on pause, removal or shutdown.
+    @ObservationIgnored public var onFinished: ((DownloadRecord) -> Void)?
 
     let store: DownloadStore
     let streamer: HTTPStreamer
@@ -136,7 +137,7 @@ public final class DownloadQueue {
         lastSample[id] = nil
         if items.contains(where: { $0.id == id }) {
             update(id) { $0 = result }
-            if result.state == .completed { onCompleted?(result) }
+            if result.state != .paused { onFinished?(result) }
         } else if result.state != .completed, let temp = result.tempURL {
             try? FileManager.default.removeItem(at: temp)   // removed while running
         }
