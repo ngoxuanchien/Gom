@@ -1,0 +1,10 @@
+{
+  "manifest_version": 3,
+  "name": "Gom Download Capture",
+  "version": "0.1.0",
+  "description": "Hands browser downloads to the Gom app.",
+  "permissions": ["downloads", "cookies", "storage"],
+  "host_permissions": ["<all_urls>"],
+  "background": { "service_worker": "background.js" },
+  "options_page": "options.html"
+}

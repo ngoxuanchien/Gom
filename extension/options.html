@@ -1,0 +1,23 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Gom Download Capture</title>
+  <style>
+    body { font: 14px system-ui; margin: 16px; width: 380px; }
+    label { display: block; margin: 10px 0; }
+    input[type=text], input[type=number] { display: block; width: 100%; box-sizing: border-box; margin-top: 4px; }
+  </style>
+</head>
+<body>
+  <h3>Gom Download Capture</h3>
+  <label><input type="checkbox" id="enabled"> Send downloads to Gom</label>
+  <label>Port <input type="number" id="port" min="1" max="65535"></label>
+  <label>Token (Gom → Settings → Copy) <input type="text" id="token" autocomplete="off"></label>
+  <label>Only capture files larger than (MB) <input type="number" id="thresholdMB" min="0"></label>
+  <button id="save">Save</button>
+  <button id="test">Test connection</button>
+  <p id="status" role="status"></p>
+  <script src="options.js"></script>
+</body>
+</html>
