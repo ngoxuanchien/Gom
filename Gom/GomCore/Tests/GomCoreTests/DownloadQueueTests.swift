@@ -44,8 +44,8 @@ import Testing
     @Test func completedRecordKeepsNoCookies() async throws {
         let dir = try makeTempDir()
         let queue = makeQueue(dir)
-        var completed: [DownloadRecord] = []
-        queue.onCompleted = { completed.append($0) }
+        var finished: [DownloadRecord] = []
+        queue.onFinished = { finished.append($0) }
         let (url, _) = MockServer.serve(.init(data: testData(100_000)))
 
         queue.add(url: url, headers: ["Cookie": "secret=1"], directory: dir)
@@ -53,7 +53,26 @@ import Testing
 
         let saved = try String(contentsOf: dir.appending(path: "downloads.json"), encoding: .utf8)
         #expect(!saved.contains("secret"))
-        #expect(completed.count == 1)
+        #expect(finished.map(\.state) == [.completed])
+    }
+
+    @Test func failureCallsOnFinishedButPauseDoesNot() async throws {
+        let dir = try makeTempDir()
+        let queue = makeQueue(dir)
+        var finished: [DownloadRecord] = []
+        queue.onFinished = { finished.append($0) }
+        let (failing, _) = MockServer.serve(.init(data: testData(1_000), status: 403), path: "/denied.bin")
+        let (slow, _) = MockServer.serve(.init(data: testData(5_000_000), chunkDelay: 0.05), path: "/slow.bin")
+
+        queue.add(url: failing, directory: dir)
+        let paused = queue.add(url: slow, directory: dir)
+        try await waitUntil { if case .failed = queue.items.first?.state { true } else { false } }
+        try await Task.sleep(for: .milliseconds(200))
+        queue.pause(paused)
+        try await waitUntil { queue.items.last?.state == .paused }
+
+        #expect(finished.count == 1)
+        guard case .failed = finished.first?.state else { Issue.record("expected a failed record"); return }
     }
 
     @Test func pauseAndResume() async throws {

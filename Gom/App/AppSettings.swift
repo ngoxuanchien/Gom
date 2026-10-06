@@ -15,6 +15,7 @@ enum AppSettings {
     }
 
     static var sortByType: Bool { defaults.object(forKey: "sortByType") as? Bool ?? true }
+    static var notifications: Bool { defaults.object(forKey: "notifications") as? Bool ?? true }
 
     /// Edited in SettingsView; stored as JSON.
     static var categories: [FileCategory] {
