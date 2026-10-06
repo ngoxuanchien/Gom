@@ -75,16 +75,26 @@ final class MockURLProtocol: URLProtocol, @unchecked Sendable {
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
 
         DispatchQueue.global().async { [self] in
-            var offset = 0
-            while offset < body.count {
-                if cancelled.withLock({ $0 }) { return }
-                let end = min(offset + config.chunkSize, body.count)
-                client?.urlProtocol(self, didLoad: body.subdata(in: offset..<end))
-                offset = end
-                if config.chunkDelay > 0 { Thread.sleep(forTimeInterval: config.chunkDelay) }
-            }
-            if cancelled.withLock({ $0 }) { return }
+            deliver(body, from: 0, chunkSize: config.chunkSize, delay: config.chunkDelay)
+        }
+    }
+
+    /// Sends one chunk, then schedules the next. asyncAfter instead of sleeping keeps
+    /// many slow parallel downloads from starving the thread pool.
+    private func deliver(_ body: Data, from offset: Int, chunkSize: Int, delay: TimeInterval) {
+        if cancelled.withLock({ $0 }) { return }
+        guard offset < body.count else {
             client?.urlProtocolDidFinishLoading(self)
+            return
+        }
+        let end = min(offset + chunkSize, body.count)
+        client?.urlProtocol(self, didLoad: body.subdata(in: offset..<end))
+        if delay > 0 {
+            DispatchQueue.global().asyncAfter(deadline: .now() + delay) { [self] in
+                deliver(body, from: end, chunkSize: chunkSize, delay: delay)
+            }
+        } else {
+            deliver(body, from: end, chunkSize: chunkSize, delay: delay)
         }
     }
 
