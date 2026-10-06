@@ -5,7 +5,7 @@
 1. Open `chrome://extensions` and turn on **Developer mode**.
 2. Click **Load unpacked** and choose this `extension/` folder.
 3. Open the extension's **Options**, paste the token from Gom → Settings → Copy, click **Save**, then **Test connection**.
-4. In Chrome settings → Downloads, turn **off** "Ask where to save each file before downloading".
+4. After editing any file here, click the reload icon on the extension's card in `chrome://extensions`.
 
 ## Known limitations
 

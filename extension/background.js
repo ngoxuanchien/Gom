@@ -31,18 +31,27 @@ async function sendToGom(item, settings) {
   }
 }
 
-chrome.downloads.onCreated.addListener(async (item) => {
+// Resolves true if Gom took the download and Chrome's copy was cancelled.
+async function handOff(item) {
   const settings = await chrome.storage.local.get(DEFAULTS);
   const url = item.finalUrl || item.url;
-  if (!settings.enabled || !settings.token) return;
-  if (!/^https?:/i.test(url)) return; // blob:, data: etc. only exist inside the page
-  if (item.totalBytes > 0 && item.totalBytes < settings.thresholdMB * 1024 * 1024) return;
+  if (!settings.enabled || !settings.token) return false;
+  if (!/^https?:/i.test(url)) return false; // blob:, data: etc. only exist inside the page
+  // Response headers have arrived by now, so the size is known unless the server didn't send one.
+  if (item.totalBytes > 0 && item.totalBytes < settings.thresholdMB * 1024 * 1024) return false;
+  if (!(await sendToGom(item, settings))) return false; // Gom not running: let Chrome do it
+  await chrome.downloads.cancel(item.id).catch(() => {});
+  await chrome.downloads.erase({ id: item.id }).catch(() => {});
+  return true;
+}
 
-  await chrome.downloads.pause(item.id).catch(() => {});
-  if (await sendToGom(item, settings)) {
-    await chrome.downloads.cancel(item.id).catch(() => {});
-    await chrome.downloads.erase({ id: item.id }).catch(() => {});
-  } else {
-    await chrome.downloads.resume(item.id).catch(() => {}); // Gom not running: let Chrome finish it
-  }
+// Runs before Chrome shows any Save As dialog (the PDF viewer always asks), and Chrome waits
+// for suggest(). Cancelling here instead of in onCreated means that dialog never appears.
+chrome.downloads.onDeterminingFilename.addListener((item, suggest) => {
+  handOff(item)
+    .catch(() => false)
+    .then((handedOff) => {
+      if (!handedOff) suggest();
+    });
+  return true; // suggest() is called asynchronously
 });

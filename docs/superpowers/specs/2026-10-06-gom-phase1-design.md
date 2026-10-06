@@ -101,18 +101,17 @@ Paste field / drag-and-drop ─────────────────�
 
 **Extension.**
 - Permissions: `downloads`, `cookies`, `storage`; `host_permissions: ["<all_urls>"]`.
-- Handling `downloads.onCreated(item)`:
-  1. Skip (let Chrome download it) if the extension is disabled, the URL is `blob:`/`data:`, or the size is known and below the threshold (default 5MB).
-  2. `chrome.downloads.pause(item.id)`.
-  3. Get cookies with `chrome.cookies.getAll({url})` and join them as `name=value; …`. Add `item.referrer` and `navigator.userAgent`.
-  4. Send `POST /add` with a 2s timeout (using `AbortController`).
-  5. On success, `cancel` then `erase`. On error or timeout, `resume`.
+- Handling `downloads.onDeterminingFilename(item, suggest)`. It runs after the response headers arrive (so the size is usually known) and before Chrome shows any Save As dialog; Chrome waits for `suggest()`:
+  1. Skip (call `suggest()`, Chrome downloads it) if the extension is disabled, the URL is `blob:`/`data:`, or the size is known and below the threshold (default 5MB).
+  2. Get cookies with `chrome.cookies.getAll({url})` and join them as `name=value; …`. Add `item.referrer` and `navigator.userAgent`.
+  3. Send `POST /add` with a 2s timeout (using `AbortController`).
+  4. On success, `cancel` then `erase` without calling `suggest()`, so no Save As dialog appears. On error or timeout, `suggest()`.
+  - `onCreated` is too early: the PDF viewer's download button opens a Save As dialog that cancelling there does not close.
 - Options page: on/off toggle, port, token, MB threshold, and a "Test connection" button (calls `/ping`).
 
 **Known limitations.**
 - Downloads created by a form POST will break because Gom re-requests them with GET. Temporarily disable the extension on those sites.
-- If Chrome's "Ask where to save each file" is enabled, the save dialog may appear before the extension intercepts. Recommend turning that option off.
-- Very small files may finish before `pause` takes effect. The 5MB threshold covers this.
+- A download handed to Gom is saved in Gom's download folder, not where a Save As dialog would have put it.
 
 ## 7. Testing
 
