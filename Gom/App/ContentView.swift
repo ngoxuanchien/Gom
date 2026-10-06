@@ -63,6 +63,6 @@ struct ContentView: View {
     }
 
     private func add(_ url: URL) {
-        queue.add(url: url, directory: AppSettings.downloadDirectory)
+        queue.add(url: url, directory: AppSettings.downloadDirectory, categories: AppSettings.sortByType ? AppSettings.categories : nil)
     }
 }

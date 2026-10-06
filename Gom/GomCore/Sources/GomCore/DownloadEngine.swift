@@ -93,6 +93,13 @@ private func prepare(_ r: inout DownloadRecord, streamer: HTTPStreamer, maxAttem
     let info = try await withRetry(maxAttempts, retryDelay) { try await probe(current, streamer: streamer) }
     discardPartial(&r)
     r.filename = sanitizeFilename(r.filename ?? info.filename)
+    // The name may only be known now (Content-Disposition). Sort once so a later restart keeps the folder.
+    if let categories = r.categories {
+        if let folder = categoryFolder(for: r.filename!, in: categories) {
+            r.directory.append(path: folder, directoryHint: .isDirectory)
+        }
+        r.categories = nil
+    }
     r.totalBytes = info.totalBytes
     r.etag = info.validator
     r.resumable = !singleConnection && info.acceptsRanges && info.totalBytes != nil
