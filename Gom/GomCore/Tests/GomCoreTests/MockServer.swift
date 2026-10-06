@@ -84,6 +84,13 @@ final class MockURLProtocol: URLProtocol, @unchecked Sendable {
     /// many slow parallel downloads from starving the thread pool.
     private func deliver(_ body: Data, from offset: Int, chunkSize: Int, delay: TimeInterval) {
         if cancelled.withLock({ $0 }) { return }
+        // A real socket stops being read while its task is suspended (bandwidth limit); mimic that.
+        if task?.state == .suspended {
+            DispatchQueue.global().asyncAfter(deadline: .now() + 0.005) { [self] in
+                deliver(body, from: offset, chunkSize: chunkSize, delay: delay)
+            }
+            return
+        }
         guard offset < body.count else {
             client?.urlProtocolDidFinishLoading(self)
             return
