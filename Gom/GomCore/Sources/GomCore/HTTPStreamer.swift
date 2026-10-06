@@ -45,6 +45,15 @@ public final class HTTPStreamer: Sendable {
         session = URLSession(configuration: configuration, delegate: delegate, delegateQueue: nil)
     }
 
+    /// Paces the downloads that use this streamer (see `runDownload`); one bucket for all of them.
+    let limiter = BandwidthLimiter()
+
+    /// Combined download speed cap in bytes/s; 0 = unlimited. Applies to running downloads at once.
+    public var bytesPerSecond: Int {
+        get { limiter.bytesPerSecond }
+        set { limiter.bytesPerSecond = newValue }
+    }
+
     /// ponytail: unbounded buffer, so a disk slower than the network grows memory; add backpressure if that bites.
     public func stream(_ request: URLRequest) -> AsyncThrowingStream<StreamEvent, any Error> {
         AsyncThrowingStream { continuation in

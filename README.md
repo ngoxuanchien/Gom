@@ -8,6 +8,7 @@
 
 - Download queue with a concurrency limit; state survives app restarts.
 - Multi-connection HTTP downloads (8 segments) with pause/resume and automatic retry.
+- Optional speed limit (Settings → Speed limit, in KB/s; 0 = unlimited) that caps all downloads together and applies to running downloads immediately.
 - Add downloads by pasting a URL or dragging a link into the window.
 - Chrome / Arc / Brave / Edge extension that intercepts downloads (optionally only above a size threshold) and sends them to Gom, with cookies and Referer so logged-in downloads work. If Gom is not running, the browser downloads the file itself.
 - Downloads from the browser bring Gom to the front and ask which folder to save into.
