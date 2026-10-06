@@ -30,7 +30,7 @@ Or from a checkout:
 git clone https://github.com/ngoxuanchien/Gom.git && cd Gom && ./install.sh
 ```
 
-The script builds a Release app and copies it to `/Applications` (set `GOM_APP_DIR` to install elsewhere). The app is ad-hoc signed, not notarized.
+The script builds a Release app and copies it to `/Applications` (set `GOM_APP_DIR` to install elsewhere). When run through `curl`, the source is kept in `~/Library/Application Support/Gom/source` (or `GOM_SRC_DIR`) so the Chrome extension loaded from it stays put; running the script again updates it. The app is ad-hoc signed, not notarized.
 
 ### Browser extension
 
