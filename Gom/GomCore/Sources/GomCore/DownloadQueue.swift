@@ -22,7 +22,7 @@ public final class DownloadQueue {
         store: DownloadStore,
         streamer: HTTPStreamer = HTTPStreamer(),
         maxConcurrent: Int = 3,
-        retryDelay: @escaping @Sendable (Int) -> Duration = { .seconds(1 << $0) }
+        retryDelay: @escaping @Sendable (Int) -> Duration = defaultRetryDelay
     ) {
         self.store = store
         self.streamer = streamer

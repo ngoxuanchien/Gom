@@ -37,14 +37,21 @@ final class ProgressBox: Sendable {
     }
 }
 
+/// 1s, 2s, 4s, 8s, 16s plus up to 50% jitter, so segments throttled together (HTTP 429)
+/// don't all come back at the same instant.
+public let defaultRetryDelay: @Sendable (Int) -> Duration = { attempt in
+    let base = 1000 << attempt
+    return .milliseconds(base + Int.random(in: 0...(base / 2)))
+}
+
 /// Downloads `record` until it completes, fails, or the calling task is cancelled.
 /// Cancellation returns the record as `.paused` with its segment progress intact.
 @concurrent
 public func runDownload(
     _ record: DownloadRecord,
     streamer: HTTPStreamer,
-    maxAttempts: Int = 5,
-    retryDelay: @escaping @Sendable (Int) -> Duration = { .seconds(1 << $0) },
+    maxAttempts: Int = 6,   // first attempt + 5 retries (spec)
+    retryDelay: @escaping @Sendable (Int) -> Duration = defaultRetryDelay,
     onProgress: @escaping @Sendable (DownloadRecord) -> Void = { _ in }
 ) async -> DownloadRecord {
     var r = record

@@ -111,6 +111,25 @@ import Testing
         #expect(try contents(result) == data)
     }
 
+    @Test func retriesFiveTimesAfterTheFirstAttempt() async throws {
+        let dir = try makeTempDir()
+        let data = testData(1000)   // one segment, so failFirst counts that segment's attempts
+        let (url, file) = MockServer.serve(.init(data: data, failFirst: 5))
+        let result = await runDownload(DownloadRecord(url: url, directory: dir), streamer: MockServer.streamer(), retryDelay: noDelay)
+        #expect(result.state == .completed)
+        #expect(file.requests.count == 1 + 6)   // probe + 1 attempt + 5 retries
+    }
+
+    @Test func defaultRetryDelayBacksOffWithJitter() {
+        for attempt in 0..<5 {
+            let base = Duration.seconds(1 << attempt)
+            let delays = (0..<20).map { _ in defaultRetryDelay(attempt) }
+            let inRange = delays.allSatisfy { $0 >= base && $0 <= base * 1.5 }
+            #expect(inRange)
+            #expect(Set(delays).count > 1)
+        }
+    }
+
     @Test func persistentFailuresGiveUp() async throws {
         let dir = try makeTempDir()
         let (url, _) = MockServer.serve(.init(data: testData(5_000_000), failFirst: 1000))
