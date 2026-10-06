@@ -40,6 +40,7 @@ public func parseHTTPRequest(_ data: Data) -> ParseResult {
 
     let length = Int(headers["content-length"] ?? "0") ?? -1
     guard length >= 0 else { return .invalid }
+    if length > maxRequestSize { return .tooLarge }   // checked first so the sum below can't overflow
     let bodyStart = headerEnd.upperBound
     if bodyStart - data.startIndex + length > maxRequestSize { return .tooLarge }
     guard data.endIndex - bodyStart >= length else { return .incomplete }

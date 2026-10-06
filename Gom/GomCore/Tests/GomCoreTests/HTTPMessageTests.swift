@@ -31,6 +31,10 @@ import Testing
         #expect(parseHTTPRequest(Data(count: maxRequestSize + 1)) == .tooLarge)
     }
 
+    @Test func hugeContentLengthIsTooLargeNotACrash() {
+        #expect(parseHTTPRequest(raw("POST /add HTTP/1.1\r\nContent-Length: 9223372036854775807\r\n\r\n")) == .tooLarge)
+    }
+
     @Test func serializesResponse() {
         let text = String(decoding: HTTPResponse(status: 401, json: #"{"ok":false}"#).serialized(), as: UTF8.self)
         #expect(text == "HTTP/1.1 401 Unauthorized\r\nContent-Type: application/json\r\nContent-Length: 12\r\nConnection: close\r\n\r\n{\"ok\":false}")
