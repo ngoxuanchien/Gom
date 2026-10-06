@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <title>Gom</title>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#34C77B"/>
+      <stop offset="1" stop-color="#0E8A6A"/>
+    </linearGradient>
+  </defs>
+  <rect width="128" height="128" rx="28" fill="url(#bg)"/>
+  <!-- three streams gathering into one arrow -->
+  <path d="M36 26 L64 58 M92 26 L64 58 M64 22 V78" stroke="#fff" stroke-width="10" stroke-linecap="round" fill="none"/>
+  <path d="M46 66 L64 84 L82 66" stroke="#fff" stroke-width="10" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <!-- tray -->
+  <path d="M30 88 V100 H98 V88" stroke="#fff" stroke-width="10" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+</svg>
