@@ -74,6 +74,15 @@ public final class DownloadQueue {
         schedule()
     }
 
+    public func pauseAll() {
+        for record in items where record.state == .queued || record.state == .downloading { pause(record.id) }
+    }
+
+    /// Resumes paused downloads only; failed ones are retried one by one.
+    public func resumeAll() {
+        for record in items where record.state == .paused { resume(record.id) }
+    }
+
     /// Unfinished downloads always lose their temp file; `deleteFile` also deletes a finished file.
     public func remove(_ id: UUID, deleteFile: Bool) {
         guard let record = items.first(where: { $0.id == id }) else { return }

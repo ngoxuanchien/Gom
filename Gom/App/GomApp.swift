@@ -11,6 +11,12 @@ struct GomApp: App {
         Window("Gom", id: "main") {
             ContentView(queue: appDelegate.queue)
         }
+        MenuBarExtra {
+            MenuBarView(queue: appDelegate.queue)
+        } label: {
+            MenuBarLabel(queue: appDelegate.queue)
+        }
+        .menuBarExtraStyle(.window)
         Settings {
             SettingsView()
         }
@@ -87,7 +93,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: record.id.uuidString, content: content, trigger: nil))
     }
 
-    private static func showMainWindow() {
+    static func showMainWindow() {
         // Plain activate() is cooperative and the browser in front won't yield, so force it.
         NSApp.activate(ignoringOtherApps: true)
         if let window = NSApp.windows.first(where: { $0.identifier?.rawValue.hasPrefix("main") == true }) {
