@@ -20,7 +20,7 @@ Gom already asks for notification permission on launch and posts "Download compl
 | Download fails (after the engine's retries) | "Download failed" · file name — error | Gom comes to the front |
 | Paused, cancelled, removed, app quit | none | — |
 
-Permission is requested on first launch, as today. If the user denies it, macOS drops the notifications silently.
+Permission is requested on first launch, as today. macOS never asks again once the user denies it and then drops notifications silently, so Settings shows "Notifications are off for Gom in System Settings" with an **Open System Settings** button while the toggle is on but permission is denied (re-checked when Gom becomes active).
 
 ## 4. Design
 

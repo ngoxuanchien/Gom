@@ -1,6 +1,7 @@
 import AppKit
 import GomCore
 import SwiftUI
+import UserNotifications
 
 struct SettingsView: View {
     @AppStorage("downloadDirectory") private var directoryPath = ""
@@ -10,6 +11,7 @@ struct SettingsView: View {
     @AppStorage("token") private var token = ""
     @State private var categories = AppSettings.categories
     @State private var choosingFolder = false
+    @State private var notificationsDenied = false
 
     var body: some View {
         Form {
@@ -24,6 +26,14 @@ struct SettingsView: View {
                 }
                 Toggle("Sort into folders by file type", isOn: $sortByType)
                 Toggle("Show notifications", isOn: $notifications)
+                if notifications && notificationsDenied {
+                    LabeledContent("Notifications are off for Gom in System Settings.") {
+                        Button("Open System Settings") {
+                            NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension?id=\(Bundle.main.bundleIdentifier ?? "")")!)
+                        }
+                    }
+                    .foregroundStyle(.secondary)
+                }
             } header: {
                 Text("Downloads")
             }
@@ -84,6 +94,15 @@ struct SettingsView: View {
             if case .success(let url) = result { directoryPath = url.path(percentEncoded: false) }
         }
         .onChange(of: categories) { AppSettings.categories = $1 }
+        // Re-checked when the user comes back from System Settings.
+        .task { await checkNotifications() }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            Task { await checkNotifications() }
+        }
         .frame(width: 560)
+    }
+
+    private func checkNotifications() async {
+        notificationsDenied = await UNUserNotificationCenter.current().notificationSettings().authorizationStatus == .denied
     }
 }
