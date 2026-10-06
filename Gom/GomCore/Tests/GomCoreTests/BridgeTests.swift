@@ -21,7 +21,14 @@ import Testing
 
     @Test func webPageOriginIsUnauthorized() {
         #expect(route(request("GET", "/ping", origin: "https://evil.example"), token: "secret").0.status == 401)
-        #expect(route(request("GET", "/ping", origin: nil), token: "secret").0.status == 401)
+        #expect(route(request("GET", "/ping", origin: "null"), token: "secret").0.status == 401)
+    }
+
+    /// Chrome sends no Origin for fetches from an extension that holds host permissions
+    /// (seen in Chrome 154: `Sec-Fetch-Site: none`, no Origin), so the token alone must be enough.
+    @Test func extensionRequestWithoutOriginIsAllowed() {
+        #expect(route(request("GET", "/ping", origin: nil), token: "secret").0.status == 200)
+        #expect(route(request("GET", "/ping", origin: nil, token: nil), token: "secret").0.status == 401)
     }
 
     @Test func pingReturnsAppName() {

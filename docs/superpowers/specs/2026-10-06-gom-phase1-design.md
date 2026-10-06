@@ -94,7 +94,7 @@ Paste field / drag-and-drop ─────────────────�
 - `NWListener` listening on `127.0.0.1` only. Minimal HTTP/1.1 parser: request line, headers, body by `Content-Length`.
 - `GET /ping` returns `{"ok":true,"app":"Gom"}`.
 - `POST /add` accepts `{url, filename?, referrer?, cookies?, userAgent?}` and returns `{"ok":true}`.
-- Authentication: `Origin` must start with `chrome-extension://` **and** `X-Gom-Token` must match. Otherwise return `401`.
+- Authentication: `X-Gom-Token` must match, and if an `Origin` header is present it must start with `chrome-extension://`. Otherwise return `401`. (Chrome sends no `Origin` for fetches from an extension with host permissions, so a missing `Origin` is allowed.)
   - Token: 32 random bytes as hex, generated on first launch, stored in `UserDefaults`.
 - No CORS headers are sent. `OPTIONS` returns `403`, so web pages cannot send custom headers.
 - Requests over 1MB or with invalid JSON return `400`.

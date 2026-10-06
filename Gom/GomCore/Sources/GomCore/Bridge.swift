@@ -18,14 +18,15 @@ public struct AddRequest: Codable, Equatable, Sendable {
 }
 
 /// Decides the response to a bridge request. Returns the download to add, if any.
-/// Web pages are kept out twice: they can't send a chrome-extension:// Origin, and the custom
-/// X-Gom-Token header forces a CORS preflight, which is always refused.
+/// The token is the credential. Web pages can't send it: the custom X-Gom-Token header forces a
+/// CORS preflight, which is always refused, and any non-extension Origin is rejected outright.
+/// A missing Origin is allowed because Chrome omits it for extensions with host permissions.
 public func route(_ request: HTTPRequest, token: String) -> (HTTPResponse, AddRequest?) {
     if request.method == "OPTIONS" {
         return (HTTPResponse(status: 403, json: #"{"ok":false,"error":"forbidden"}"#), nil)
     }
-    guard request.headers["origin"]?.hasPrefix("chrome-extension://") == true,
-          request.headers["x-gom-token"] == token else {
+    let originAllowed = request.headers["origin"].map { $0.hasPrefix("chrome-extension://") } ?? true
+    guard originAllowed, request.headers["x-gom-token"] == token else {
         return (HTTPResponse(status: 401, json: #"{"ok":false,"error":"unauthorized"}"#), nil)
     }
     switch (request.method, request.path) {
