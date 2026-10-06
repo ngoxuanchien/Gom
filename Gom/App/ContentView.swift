@@ -7,10 +7,14 @@ struct ContentView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack(alignment: .top) {
+            HStack(alignment: .center, spacing: 12) {
+                Image(systemName: "link")
+                    .foregroundStyle(.secondary)
                 TextEditor(text: $input)
                     .font(.body.monospaced())
-                    .frame(height: 54)
+                    .scrollContentBackground(.hidden)
+                    .scrollIndicators(.never)
+                    .frame(height: 44)
                     .overlay(alignment: .topLeading) {
                         if input.isEmpty {
                             Text("Paste links, one per line…")
@@ -20,15 +24,29 @@ struct ContentView: View {
                         }
                     }
                     .accessibilityLabel("Links to download")
-                Button("Add") { addLinks() }
+                Button("Add", systemImage: "arrow.down.circle.fill") { addLinks() }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
                     .keyboardShortcut(.return, modifiers: .command)
                     .disabled(parseURLList(input).isEmpty)
+                    .help("Add links (⌘↩)")
             }
+            .padding(10)
+            .background(.quaternary.opacity(0.5), in: .rect(cornerRadius: 10))
             .padding()
             Divider()
             List(queue.items) { item in
                 DownloadRow(item: item, speed: queue.speeds[item.id], queue: queue)
                     .listRowBackground(queue.highlighted == item.id ? Color.accentColor.opacity(0.15) : nil)
+            }
+            .overlay {
+                if queue.items.isEmpty {
+                    ContentUnavailableView(
+                        "No Downloads",
+                        systemImage: "tray.and.arrow.down",
+                        description: Text("Paste links above, drop them here, or download from the browser.")
+                    )
+                }
             }
             .dropDestination(for: URL.self) { urls, _ in
                 let valid = urls.filter(isDownloadableURL)

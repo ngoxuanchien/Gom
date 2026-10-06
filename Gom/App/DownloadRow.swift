@@ -1,6 +1,7 @@
 import AppKit
 import GomCore
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct DownloadRow: View {
     let item: DownloadRecord
@@ -8,9 +9,14 @@ struct DownloadRow: View {
     let queue: DownloadQueue
 
     var body: some View {
-        HStack {
+        HStack(spacing: 12) {
+            Image(nsImage: fileIcon)
+                .resizable()
+                .frame(width: 32, height: 32)
+                .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 4) {
                 Text(item.filename ?? item.url.absoluteString)
+                    .fontWeight(.medium)
                     .lineLimit(1)
                     .truncationMode(.middle)
                 status
@@ -18,6 +24,7 @@ struct DownloadRow: View {
             Spacer()
             buttons
         }
+        .padding(.vertical, 4)
         .contentShape(Rectangle())
         .onTapGesture(count: 2) {
             if item.state == .completed, let url = item.fileURL { NSWorkspace.shared.open(url) }
@@ -40,7 +47,9 @@ struct DownloadRow: View {
             }
             Text(detail).font(.caption).foregroundStyle(.secondary)
         case .completed:
-            Text("Done · \(bytes(item.totalBytes ?? item.downloadedBytes))").font(.caption).foregroundStyle(.secondary)
+            Label("Done · \(bytes(item.totalBytes ?? item.downloadedBytes))", systemImage: "checkmark.circle.fill")
+                .font(.caption)
+                .foregroundStyle(.green)
         case .failed(let reason):
             Label(reason, systemImage: "exclamationmark.triangle").font(.caption).foregroundStyle(.red)
         }
@@ -87,6 +96,11 @@ struct DownloadRow: View {
         Button(action: action) { Image(systemName: symbol) }
             .help(label)
             .accessibilityLabel(label)
+    }
+
+    private var fileIcon: NSImage {
+        let ext = (item.filename.map { URL(filePath: $0) } ?? item.url).pathExtension
+        return NSWorkspace.shared.icon(for: UTType(filenameExtension: ext) ?? .data)
     }
 
     private func bytes(_ count: Int64) -> String {

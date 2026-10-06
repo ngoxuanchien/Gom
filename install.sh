@@ -11,11 +11,17 @@ if ! command -v xcodegen >/dev/null; then
   brew install xcodegen
 fi
 
-# Run from a checkout if we are in one, otherwise clone into a temp dir.
+# Run from a checkout if we are in one. Otherwise keep a copy in a fixed place, since
+# Chrome loads the unpacked extension from there and a temp dir would get cleaned up.
 SRC="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd)"
 if [ ! -f "$SRC/Gom/project.yml" ]; then
-  SRC="$(mktemp -d)/Gom"
-  git clone --depth 1 https://github.com/ngoxuanchien/Gom.git "$SRC"
+  SRC="${GOM_SRC_DIR:-$HOME/Library/Application Support/Gom/source}"
+  if [ -d "$SRC/.git" ]; then
+    git -C "$SRC" fetch --depth 1 origin main
+    git -C "$SRC" reset --hard FETCH_HEAD
+  else
+    git clone --depth 1 https://github.com/ngoxuanchien/Gom.git "$SRC"
+  fi
 fi
 
 cd "$SRC/Gom"
@@ -32,3 +38,10 @@ echo
 echo "Gom installed to $APP_DIR/Gom.app"
 echo "Browser extension: open chrome://extensions, enable Developer mode,"
 echo "click Load unpacked and choose: $SRC/extension"
+echo "(Already loaded? Just click Reload on the Gom card.)"
+
+# Chrome won't let scripts install unpacked extensions, so open both ends of the manual step.
+if open -Ra "Google Chrome" 2>/dev/null; then
+  open -a "Google Chrome" "chrome://extensions"
+  open "$SRC/extension"
+fi

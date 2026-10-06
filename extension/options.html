@@ -4,19 +4,66 @@
   <meta charset="utf-8">
   <title>Gom Download Capture</title>
   <style>
-    body { font: 14px system-ui; margin: 16px; width: 380px; }
-    label { display: block; margin: 10px 0; }
-    input[type=text], input[type=number] { display: block; width: 100%; box-sizing: border-box; margin-top: 4px; }
+    :root {
+      color-scheme: light dark;
+      --brand: #0E8A6A; --brand-2: #34C77B;
+      --bg: #f6f7f8; --card: #fff; --text: #1d1d1f; --muted: #6e6e73; --line: #e3e4e8;
+      --ok: #0E8A6A; --err: #d93025;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root { --bg: #1c1c1e; --card: #2c2c2e; --text: #f5f5f7; --muted: #a1a1a6; --line: #3a3a3c; --ok: #34C77B; --err: #ff6961; }
+    }
+    * { box-sizing: border-box; }
+    body { font: 13px/1.4 system-ui, sans-serif; margin: 0; padding: 16px; width: 360px; background: var(--bg); color: var(--text); }
+    header { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+    header img { width: 32px; height: 32px; }
+    header h1 { font-size: 15px; margin: 0; }
+    header p { margin: 0; color: var(--muted); font-size: 12px; }
+    .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 0 12px; }
+    .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0; }
+    .row + .row { border-top: 1px solid var(--line); }
+    .row.stack { flex-direction: column; align-items: stretch; gap: 6px; }
+    .hint { color: var(--muted); font-size: 11px; }
+    input[type=text], input[type=number] {
+      font: inherit; color: inherit; background: var(--bg); border: 1px solid var(--line);
+      border-radius: 6px; padding: 6px 8px; width: 100%;
+    }
+    input[type=number] { width: 96px; text-align: right; }
+    input:focus-visible { outline: 2px solid var(--brand-2); outline-offset: -1px; }
+    input[type=checkbox] { width: 16px; height: 16px; accent-color: var(--brand); }
+    .actions { display: flex; gap: 8px; margin-top: 14px; }
+    button { font: inherit; flex: 1; padding: 8px; border-radius: 7px; border: 1px solid var(--line); background: var(--card); color: var(--text); cursor: pointer; }
+    button.primary { background: linear-gradient(135deg, var(--brand-2), var(--brand)); color: #fff; border: none; font-weight: 600; }
+    button:hover { filter: brightness(1.05); }
+    #status { min-height: 18px; margin: 10px 0 0; font-size: 12px; }
+    #status.ok { color: var(--ok); }
+    #status.err { color: var(--err); }
   </style>
 </head>
 <body>
-  <h3>Gom Download Capture</h3>
-  <label><input type="checkbox" id="enabled"> Send downloads to Gom</label>
-  <label>Port <input type="number" id="port" min="1" max="65535"></label>
-  <label>Token (Gom → Settings → Copy) <input type="text" id="token" autocomplete="off"></label>
-  <label>Only capture files larger than (MB) <input type="number" id="thresholdMB" min="0"></label>
-  <button id="save">Save</button>
-  <button id="test">Test connection</button>
+  <header>
+    <img src="icons/128.png" alt="">
+    <div>
+      <h1>Gom Download Capture</h1>
+      <p>Hands browser downloads to the Gom app.</p>
+    </div>
+  </header>
+  <div class="card">
+    <label class="row"><span>Send downloads to Gom</span><input type="checkbox" id="enabled"></label>
+    <label class="row"><span>Port</span><input type="number" id="port" min="1" max="65535"></label>
+    <label class="row stack">
+      <span>Token</span>
+      <input type="text" id="token" autocomplete="off" placeholder="Paste from Gom → Settings → Copy">
+    </label>
+    <label class="row">
+      <span>Only files larger than (MB)<br><span class="hint">0 captures every download</span></span>
+      <input type="number" id="thresholdMB" min="0">
+    </label>
+  </div>
+  <div class="actions">
+    <button id="test">Test connection</button>
+    <button id="save" class="primary">Save</button>
+  </div>
   <p id="status" role="status"></p>
   <script src="options.js"></script>
 </body>

@@ -1,6 +1,9 @@
 const DEFAULTS = { enabled: true, port: 47615, token: "", thresholdMB: 0 };
 const $ = (id) => document.getElementById(id);
-const showStatus = (text) => { $("status").textContent = text; };
+const showStatus = (text, ok = true) => {
+  $("status").textContent = text;
+  $("status").className = ok ? "ok" : "err";
+};
 
 chrome.storage.local.get(DEFAULTS).then((s) => {
   $("enabled").checked = s.enabled;
@@ -27,8 +30,8 @@ $("test").onclick = async () => {
   const s = readForm();
   try {
     const res = await fetch(`http://127.0.0.1:${s.port}/ping`, { headers: { "X-Gom-Token": s.token } });
-    showStatus(res.ok ? "Connected to Gom ✓" : `Gom rejected the request (HTTP ${res.status}) – check the token.`);
+    showStatus(res.ok ? "Connected to Gom ✓" : `Gom rejected the request (HTTP ${res.status}) – check the token.`, res.ok);
   } catch {
-    showStatus("Can't reach Gom – is the app running on this port?");
+    showStatus("Can't reach Gom – is the app running on this port?", false);
   }
 };
