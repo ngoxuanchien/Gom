@@ -9,7 +9,8 @@
 - Download queue with a concurrency limit; state survives app restarts.
 - Multi-connection HTTP downloads (8 segments) with pause/resume and automatic retry.
 - Add downloads by pasting a URL or dragging a link into the window.
-- Chrome / Arc / Brave / Edge extension that intercepts large downloads (default ≥ 5MB) and sends them to Gom, with cookies and Referer so logged-in downloads work. If Gom is not running, the browser downloads the file itself.
+- Chrome / Arc / Brave / Edge extension that intercepts downloads (optionally only above a size threshold) and sends them to Gom, with cookies and Referer so logged-in downloads work. If Gom is not running, the browser downloads the file itself.
+- Downloads from the browser bring Gom to the front and ask which folder to save into.
 - No external dependencies: Swift, SwiftUI and Network.framework only.
 
 ## Requirements

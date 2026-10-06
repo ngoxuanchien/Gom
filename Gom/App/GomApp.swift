@@ -50,7 +50,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         do {
             let server = try BridgeServer(port: UInt16(clamping: AppSettings.port), token: AppSettings.token) { add in
                 Task { @MainActor in
-                    queue.add(url: add.url, headers: add.headers, filename: add.filename, directory: AppSettings.downloadDirectory)
+                    Self.showMainWindow()
+                    Self.chooseFolder(for: add) { directory in
+                        queue.add(url: add.url, headers: add.headers, filename: add.filename, directory: directory)
+                    }
                 }
             }
             self.server = server
@@ -63,6 +66,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         } catch {
             showBridgeError(error)
+        }
+    }
+
+    private static func showMainWindow() {
+        // Plain activate() is cooperative and the browser in front won't yield, so force it.
+        NSApp.activate(ignoringOtherApps: true)
+        if let window = NSApp.windows.first(where: { $0.identifier?.rawValue.hasPrefix("main") == true }) {
+            window.makeKeyAndOrderFront(nil)
+            window.orderFrontRegardless()
+        } else {
+            // The window was closed: a reopen event makes SwiftUI recreate it, like clicking the Dock icon.
+            NSWorkspace.shared.open(Bundle.main.bundleURL)
+        }
+    }
+
+    /// Asks where to save a download from the extension. Cancelling drops the download.
+    private static func chooseFolder(for add: AddRequest, then save: @escaping (URL) -> Void) {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.canCreateDirectories = true
+        panel.directoryURL = AppSettings.downloadDirectory
+        panel.prompt = "Save Here"
+        panel.message = "Choose where to save \(add.filename ?? add.url.lastPathComponent)"
+        panel.begin { response in
+            if response == .OK, let url = panel.url { save(url) }
         }
     }
 
