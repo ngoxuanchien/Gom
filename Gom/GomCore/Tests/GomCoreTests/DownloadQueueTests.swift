@@ -93,6 +93,29 @@ import Testing
         #expect(try Data(contentsOf: #require(queue.items.first?.fileURL)) == data)
     }
 
+    @Test func pauseAllAndResumeAllSkipFailed() async throws {
+        let dir = try makeTempDir()
+        let queue = makeQueue(dir)
+        let (failing, _) = MockServer.serve(.init(data: testData(1_000), status: 403), path: "/denied.bin")
+        queue.add(url: failing, directory: dir)
+        try await waitUntil { if case .failed = queue.items.first?.state { true } else { false } }
+        let data = testData(500_000)
+        for i in 0..<4 {
+            let (url, _) = MockServer.serve(.init(data: data, chunkDelay: 0.5), path: "/slow\(i).bin")
+            queue.add(url: url, directory: dir)
+        }
+        #expect(queue.items.contains { $0.state == .queued })
+
+        queue.pauseAll()
+        try await waitUntil { queue.items.dropFirst().allSatisfy { $0.state == .paused } }
+        #expect(queue.activeCount == 0)
+
+        queue.resumeAll()
+        #expect(queue.items.dropFirst().allSatisfy { $0.state == .downloading || $0.state == .queued })
+        guard case .failed = queue.items.first?.state else { Issue.record("failed record was resumed"); return }
+        queue.pauseAll()
+    }
+
     @Test func shutdownSavesRunningAsQueuedAndRelaunchResumes() async throws {
         let dir = try makeTempDir()
         let data = testData(5_000_000)
