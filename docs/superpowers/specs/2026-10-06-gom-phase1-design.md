@@ -1,138 +1,138 @@
-# Gom – Đợt 1: Hàng đợi + tải HTTP đa luồng + bắt tải từ Chrome
+# Gom – Phase 1: Queue + multi-connection HTTP downloads + Chrome download capture
 
-Ngày: 2026-10-06 · Trạng thái: chờ duyệt
+Date: 2026-10-06 · Status: awaiting review
 
-## 1. Mục tiêu
+## 1. Goals
 
-App macOS tải file cho người dùng cá nhân (chưa phát hành). Lộ trình 3 đợt:
+A macOS download app for personal use (not distributed yet). Roadmap in 3 phases:
 
-1. **Đợt 1 (spec này):** hàng đợi + tải HTTP đa luồng, tạm dừng/tải tiếp + extension Chrome tự chặn lượt tải.
-2. Đợt 2: tải video qua `yt-dlp`, dùng chung hàng đợi.
-3. Đợt 3: đặt lịch tải, tự xếp file theo loại.
+1. **Phase 1 (this spec):** download queue, multi-connection HTTP downloads with pause/resume, and a Chrome extension that automatically intercepts downloads.
+2. Phase 2: video downloads via `yt-dlp`, sharing the same queue.
+3. Phase 3: scheduled downloads and automatic sorting of files by type.
 
-**Hoàn thành đợt 1 khi:** toàn bộ test Swift pass; checklist thử tay của extension (mục 7) đạt; một file ISO khoảng 1GB tải qua Gom có checksum trùng với bản Chrome tải.
+**Phase 1 is done when:** all Swift tests pass; the manual extension checklist (section 7) passes; a ~1GB ISO downloaded through Gom has the same checksum as the one Chrome downloads.
 
-**Ngoài phạm vi đợt 1:** yt-dlp, đặt lịch, xếp file theo loại, icon menu bar, tự chia lại đoạn, giới hạn băng thông, chỉnh số đoạn trong UI, Safari/Firefox, ký code/notarize.
+**Out of scope for phase 1:** yt-dlp, scheduling, sorting by type, menu bar icon, dynamic segment re-splitting, bandwidth limiting, configurable segment count in the UI, Safari/Firefox, code signing/notarization.
 
-## 2. Công nghệ
+## 2. Technology
 
 - Swift 6, SwiftUI, deployment target macOS 27, Xcode 27.
-- Chỉ dùng Foundation, SwiftUI, Network.framework. Không có dependency ngoài.
-- Extension Chrome Manifest V3 (chạy được trên Chrome/Arc/Brave/Edge), cài bằng "Load unpacked".
+- Only Foundation, SwiftUI and Network.framework. No external dependencies.
+- Chrome extension on Manifest V3 (works in Chrome/Arc/Brave/Edge), installed with "Load unpacked".
 
-Cấu trúc repo:
+Repo layout:
 
 ```
-Gom/          dự án Xcode (app + test target)
+Gom/          Xcode project (app + test target)
 extension/    manifest.json, background.js, options.html, options.js, README.md
 docs/
 ```
 
-## 3. Kiến trúc
+## 3. Architecture
 
 ```
 Extension ──POST 127.0.0.1:47615/add──▶ BridgeServer ─┐
-                                                      ├─▶ DownloadQueue ─▶ DownloadTask (mỗi file 1 task)
-Ô dán link / kéo-thả ─────────────────────────────────┘          │
+                                                      ├─▶ DownloadQueue ─▶ DownloadTask (one per file)
+Paste field / drag-and-drop ──────────────────────────┘          │
                                                                  ▼
-                                                    UI SwiftUI (@Observable)
+                                                    SwiftUI UI (@Observable)
 ```
 
-| Thành phần | Trách nhiệm | Phụ thuộc |
+| Component | Responsibility | Depends on |
 |---|---|---|
-| `DownloadTask` | Tải 1 URL ra 1 file: probe, chia đoạn, tạm dừng/tải tiếp, thử lại | URLSession, FileHandle |
-| `DownloadQueue` | Danh sách lượt tải, giới hạn chạy song song, lưu/khôi phục | DownloadTask, Codable |
-| `BridgeServer` | Nhận request từ extension, xác thực rồi đẩy vào queue | Network.framework |
-| UI | Danh sách lượt tải, ô dán link, cài đặt | DownloadQueue |
-| Extension | Chặn lượt tải của Chrome, gửi sang Gom; Gom lỗi thì trả lại cho Chrome | chrome.downloads, chrome.cookies |
+| `DownloadTask` | Downloads one URL to one file: probe, segmenting, pause/resume, retry | URLSession, FileHandle |
+| `DownloadQueue` | Holds the download list, limits concurrency, saves and restores state | DownloadTask, Codable |
+| `BridgeServer` | Receives requests from the extension, authenticates them, pushes them into the queue | Network.framework |
+| UI | Download list, paste field, settings | DownloadQueue |
+| Extension | Intercepts Chrome downloads and hands them to Gom; if Gom fails, gives them back to Chrome | chrome.downloads, chrome.cookies |
 
-## 4. Công cụ tải (`DownloadTask`)
+## 4. Download engine (`DownloadTask`)
 
-**Probe.** Gửi `GET` với `Range: bytes=0-0`, kèm cookie/Referer/User-Agent nếu có.
-- `206` có `Content-Range: bytes 0-0/<total>` nghĩa là server hỗ trợ Range, biết luôn kích thước.
-- `200` hoặc không biết kích thước thì tải 1 luồng, không tải tiếp được. Tạm dừng nghĩa là dừng hẳn, lần sau tải lại từ đầu, UI ghi rõ điều này.
-- Tên file lấy theo thứ tự: tên extension gửi → `Content-Disposition` → phần cuối URL.
-- Lưu `ETag` (nếu không có thì `Last-Modified`) để kiểm tra khi tải tiếp.
+**Probe.** Send a `GET` with `Range: bytes=0-0`, plus cookie/Referer/User-Agent when provided.
+- `206` with `Content-Range: bytes 0-0/<total>` means the server supports ranges, and gives the size.
+- `200`, or an unknown size, means a single-connection download that cannot resume. Pausing stops it completely and the next start begins from zero; the UI states this explicitly.
+- File name, in order of preference: name sent by the extension → `Content-Disposition` → last path component of the URL.
+- Store the `ETag` (or `Last-Modified` if there is no ETag) to validate the file on resume.
 
-**Chia đoạn.**
-- Mặc định 8 đoạn (hằng số). File dưới 2MB dùng 1 đoạn. Các đoạn phủ đúng `[0, total)`, không chồng, không hở.
-- Ghi vào file tạm `<tên>.gomdownload` trong thư mục đích. Mỗi đoạn có `FileHandle` riêng, ghi theo offset của mình.
-- Mỗi đoạn là 1 request `Range: bytes=<start+done>-<end>`. Nhận dữ liệu theo khối qua `URLSessionDataDelegate`, không dùng `URLSession.bytes` vì nó trả từng byte một, chậm.
-- Xong thì đổi tên file tạm thành tên thật. Trùng tên thì thêm ` (1)`, ` (2)`…
+**Segmenting.**
+- 8 segments by default (a constant). Files under 2MB use 1 segment. Segments cover exactly `[0, total)` with no overlaps and no gaps.
+- Write into a temp file `<name>.gomdownload` in the destination folder. Each segment has its own `FileHandle` and writes at its own offset.
+- Each segment is one request with `Range: bytes=<start+done>-<end>`. Data arrives in chunks through `URLSessionDataDelegate`. `URLSession.bytes` is not used because it yields one byte at a time, which is slow.
+- When complete, rename the temp file to the real name. On a name collision, append ` (1)`, ` (2)`… like Finder.
 
-**Tạm dừng / tải tiếp.**
-- Tiến độ từng đoạn `{start, end, done}` được lưu khoảng 2 giây một lần và ngay khi tạm dừng.
-- Khi tải tiếp, mỗi đoạn gửi lại request từ chỗ đã dừng kèm `If-Range: <ETag|Last-Modified>`. Server trả `200` thay vì `206` nghĩa là file đã đổi: xóa file tạm, tải lại từ đầu.
-- Khi thoát app, các lượt đang tải lưu thành `paused`. Mở lại app thì tự tải tiếp.
+**Pause / resume.**
+- Per-segment progress `{start, end, done}` is saved about every 2 seconds and immediately on pause.
+- On resume, each segment requests from where it stopped with `If-Range: <ETag|Last-Modified>`. A `200` instead of `206` means the file changed: delete the temp file and start over.
+- On app quit, active downloads are saved as `paused` and resume automatically on the next launch.
 
-**Lỗi.**
-- Mỗi đoạn thử lại tối đa 5 lần, chờ 1s, 2s, 4s, 8s, 16s. Hết lượt thử thì cả lượt tải thành `failed(lý do)`, có nút "Thử lại".
-- `401`/`403` báo `failed` ngay, không thử lại.
+**Errors.**
+- Each segment retries up to 5 times with waits of 1s, 2s, 4s, 8s, 16s. When retries run out, the whole download becomes `failed(reason)` with a "Retry" button.
+- `401`/`403` fail immediately with no retry.
 
-## 5. Hàng đợi, lưu trạng thái, UI
+## 5. Queue, persistence, UI
 
-**`DownloadQueue`** (`@Observable`, `@MainActor`, 1 instance).
-- Trạng thái: `queued | downloading | paused | completed | failed(String)`.
-- Tối đa 3 lượt `downloading` cùng lúc. Khi có slot trống thì chạy lượt `queued` cũ nhất.
-- Thao tác: thêm, tạm dừng, tiếp, thử lại, xóa khỏi danh sách, xóa kèm file.
-- Thêm URL đã có trong hàng đợi mà chưa `completed` thì bỏ qua và làm nổi bật lượt cũ.
+**`DownloadQueue`** (`@Observable`, `@MainActor`, a single instance).
+- States: `queued | downloading | paused | completed | failed(String)`.
+- At most 3 downloads in `downloading` at once. When a slot frees up, the oldest `queued` item starts.
+- Actions: add, pause, resume, retry, remove from list, remove with file.
+- Adding a URL that is already in the queue and not `completed` is ignored, and the existing item is highlighted.
 
-**Lưu trạng thái.** File `~/Library/Application Support/Gom/downloads.json`, dùng `Codable`, ghi atomic.
-- Mỗi bản ghi gồm: `id, url, headers, filename, directory, totalBytes, etag, segments, state, addedAt`.
-- Cookie lưu dạng chữ thường. Chấp nhận được vì máy chỉ mình người dùng dùng; nếu phát hành thì chuyển sang Keychain.
-- Lượt tải chuyển sang `completed` thì xóa `headers` khỏi bản ghi.
+**Persistence.** File `~/Library/Application Support/Gom/downloads.json`, using `Codable`, written atomically.
+- Each record holds: `id, url, headers, filename, directory, totalBytes, etag, segments, state, addedAt`.
+- Cookies are stored in plain text. Acceptable because only the user uses this machine; move them to the Keychain if the app is ever distributed.
+- When a download becomes `completed`, its `headers` are removed from the record.
 
 **UI.**
-- Một cửa sổ: ô dán link nhiều dòng + nút Thêm, danh sách lượt tải (tên, thanh tiến độ, %, tốc độ, nút ⏸/▶/↻/✕/📂), kéo-thả URL vào danh sách.
-- Bấm đúp lượt đã xong để mở file; 📂 mở Finder và chọn sẵn file.
-- Thông báo của macOS khi tải xong.
-- Cài đặt: thư mục lưu (mặc định `~/Downloads`), port (mặc định 47615), token (có nút copy).
+- One window: a multi-line paste field with an Add button, the download list (name, progress bar, %, speed, ⏸/▶/↻/✕/📂 buttons), and drag-and-drop of URLs onto the list.
+- Double-click a finished download to open the file; 📂 reveals the file in Finder.
+- macOS notification when a download finishes.
+- Settings: download folder (default `~/Downloads`), port (default 47615), token (with a copy button).
 
-## 6. BridgeServer và extension
+## 6. BridgeServer and extension
 
 **BridgeServer.**
-- `NWListener` chỉ nghe trên `127.0.0.1`. Bộ đọc HTTP/1.1 tối giản: dòng đầu, header, body theo `Content-Length`.
-- `GET /ping` trả `{"ok":true,"app":"Gom"}`.
-- `POST /add` nhận `{url, filename?, referrer?, cookies?, userAgent?}` và trả `{"ok":true}`.
-- Xác thực: `Origin` phải bắt đầu bằng `chrome-extension://` **và** `X-Gom-Token` phải khớp. Sai thì trả `401`.
-  - Token: 32 byte ngẫu nhiên dạng hex, sinh ở lần chạy đầu, lưu trong `UserDefaults`.
-- Không trả header CORS. `OPTIONS` trả `403`, nên trang web không gửi được header tự đặt.
-- Request quá 1MB hoặc JSON sai định dạng trả `400`.
+- `NWListener` listening on `127.0.0.1` only. Minimal HTTP/1.1 parser: request line, headers, body by `Content-Length`.
+- `GET /ping` returns `{"ok":true,"app":"Gom"}`.
+- `POST /add` accepts `{url, filename?, referrer?, cookies?, userAgent?}` and returns `{"ok":true}`.
+- Authentication: `Origin` must start with `chrome-extension://` **and** `X-Gom-Token` must match. Otherwise return `401`.
+  - Token: 32 random bytes as hex, generated on first launch, stored in `UserDefaults`.
+- No CORS headers are sent. `OPTIONS` returns `403`, so web pages cannot send custom headers.
+- Requests over 1MB or with invalid JSON return `400`.
 
 **Extension.**
-- Quyền: `downloads`, `cookies`, `storage`; `host_permissions: ["<all_urls>"]`.
-- Xử lý `downloads.onCreated(item)`:
-  1. Bỏ qua (để Chrome tự tải) nếu extension đang tắt, URL là `blob:`/`data:`, hoặc kích thước đã biết nhỏ hơn ngưỡng (mặc định 5MB).
+- Permissions: `downloads`, `cookies`, `storage`; `host_permissions: ["<all_urls>"]`.
+- Handling `downloads.onCreated(item)`:
+  1. Skip (let Chrome download it) if the extension is disabled, the URL is `blob:`/`data:`, or the size is known and below the threshold (default 5MB).
   2. `chrome.downloads.pause(item.id)`.
-  3. Lấy cookie bằng `chrome.cookies.getAll({url})` và ghép thành `name=value; …`. Thêm `item.referrer` và `navigator.userAgent`.
-  4. Gửi `POST /add`, timeout 2s (dùng `AbortController`).
-  5. Thành công thì `cancel` rồi `erase`. Lỗi hoặc timeout thì `resume`.
-- Trang cài đặt: công tắc bật/tắt, port, token, ngưỡng MB, nút "Kiểm tra kết nối" (gọi `/ping`).
+  3. Get cookies with `chrome.cookies.getAll({url})` and join them as `name=value; …`. Add `item.referrer` and `navigator.userAgent`.
+  4. Send `POST /add` with a 2s timeout (using `AbortController`).
+  5. On success, `cancel` then `erase`. On error or timeout, `resume`.
+- Options page: on/off toggle, port, token, MB threshold, and a "Test connection" button (calls `/ping`).
 
-**Giới hạn đã biết.**
-- Lượt tải tạo từ form POST sẽ hỏng vì Gom gửi lại bằng GET. Với các trang này, tạm tắt extension.
-- Nếu Chrome bật "Hỏi nơi lưu trước khi tải" thì hộp thoại có thể hiện ra trước khi extension chặn. Khuyến nghị tắt tùy chọn này.
-- File rất nhỏ có thể tải xong trước khi `pause` có tác dụng. Ngưỡng 5MB che được trường hợp này.
+**Known limitations.**
+- Downloads created by a form POST will break because Gom re-requests them with GET. Temporarily disable the extension on those sites.
+- If Chrome's "Ask where to save each file" is enabled, the save dialog may appear before the extension intercepts. Recommend turning that option off.
+- Very small files may finish before `pause` takes effect. The 5MB threshold covers this.
 
-## 7. Kiểm thử
+## 7. Testing
 
-**Swift Testing.** Dùng một `URLProtocol` giả phục vụ `Data` trong bộ nhớ. Nó hỗ trợ `Range`/`If-Range` và cấu hình được để: lỗi N lần đầu, trả 403, đổi ETag.
+**Swift Testing.** A fake `URLProtocol` serves an in-memory `Data`. It supports `Range`/`If-Range` and can be configured to: fail the first N requests, return 403, change the ETag.
 
-- Chia đoạn: phủ đúng `[0,total)`; file dưới 2MB thì 1 đoạn.
-- Probe: `206` thì chia đoạn, `200` thì 1 luồng.
-- Tải đủ file: SHA256 khớp dữ liệu gốc.
-- Tạm dừng ở khoảng 40% rồi tải tiếp: SHA256 khớp, request tải tiếp có `Range` bắt đầu đúng chỗ đã dừng.
-- ETag đổi: tải lại từ đầu, SHA256 khớp dữ liệu mới.
-- Lỗi 2 lần rồi thành công thì `completed`; `403` thì `failed` ngay.
-- Queue: thêm 5 lượt thì chỉ 3 lượt chạy cùng lúc; URL trùng bị bỏ qua.
-- Lưu trạng thái: ghi rồi đọc lại khớp; bản ghi `completed` không còn cookie.
-- Bộ đọc HTTP: đọc đúng request hợp lệ; request quá 1MB bị từ chối.
-- BridgeServer chạy thật trên port ngẫu nhiên ở `127.0.0.1`: thiếu token hoặc sai Origin trả 401; `OPTIONS` trả 403; request hợp lệ thì lượt tải vào queue.
+- Segmenting: covers exactly `[0,total)`; files under 2MB get 1 segment.
+- Probe: `206` → segmented, `200` → single connection.
+- Full download: SHA256 matches the source data.
+- Pause at ~40% then resume: SHA256 matches, and the resume request's `Range` starts exactly where it stopped.
+- ETag changed: restarts from zero, SHA256 matches the new data.
+- 2 failures then success → `completed`; `403` → `failed` immediately.
+- Queue: adding 5 items runs only 3 at once; duplicate URLs are ignored.
+- Persistence: write then read back matches; `completed` records contain no cookies.
+- HTTP parser: parses a valid request correctly; requests over 1MB are rejected.
+- BridgeServer running for real on a random port on `127.0.0.1`: missing token or wrong Origin → 401; `OPTIONS` → 403; a valid request adds the item to the queue.
 
-**Checklist thử tay extension** (ghi trong `extension/README.md`):
+**Manual extension checklist** (in `extension/README.md`):
 
-1. Tải file ISO lớn → Gom nhận, lượt tải biến khỏi danh sách của Chrome.
-2. Tắt Gom, tải file lớn → Chrome tự tải tiếp.
-3. File 1MB → Chrome tự tải, Gom không can thiệp.
-4. File cần đăng nhập (Google Drive) → Gom tải được nhờ cookie.
-5. Token sai → "Kiểm tra kết nối" báo lỗi.
+1. Download a large ISO → Gom receives it, and it disappears from Chrome's download list.
+2. Quit Gom, download a large file → Chrome continues downloading it.
+3. A 1MB file → Chrome downloads it, Gom does not interfere.
+4. A file that requires login (Google Drive) → Gom downloads it using the cookies.
+5. Wrong token → "Test connection" reports an error.
