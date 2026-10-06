@@ -1,4 +1,4 @@
-const DEFAULTS = { enabled: true, port: 47615, token: "", thresholdMB: 5 };
+const DEFAULTS = { enabled: true, port: 47615, token: "", thresholdMB: 0 };
 const $ = (id) => document.getElementById(id);
 const showStatus = (text) => { $("status").textContent = text; };
 

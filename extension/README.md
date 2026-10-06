@@ -10,7 +10,7 @@
 ## Known limitations
 
 - Downloads produced by submitting a form (POST) break, because Gom re-requests them with GET. Turn the extension off for those sites.
-- Files below the threshold (default 5MB) stay in Chrome.
+- Files below the threshold (default 0, i.e. every file) stay in Chrome.
 
 ## Manual checklist
 
