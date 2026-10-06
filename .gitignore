@@ -3,3 +3,6 @@ xcuserdata/
 DerivedData/
 build/
 .claude/settings.local.json
+.build/
+.swiftpm/
+Gom/Gom.xcodeproj/

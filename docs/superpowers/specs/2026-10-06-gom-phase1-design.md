@@ -94,25 +94,24 @@ Paste field / drag-and-drop ─────────────────�
 - `NWListener` listening on `127.0.0.1` only. Minimal HTTP/1.1 parser: request line, headers, body by `Content-Length`.
 - `GET /ping` returns `{"ok":true,"app":"Gom"}`.
 - `POST /add` accepts `{url, filename?, referrer?, cookies?, userAgent?}` and returns `{"ok":true}`.
-- Authentication: `Origin` must start with `chrome-extension://` **and** `X-Gom-Token` must match. Otherwise return `401`.
+- Authentication: `X-Gom-Token` must match, and if an `Origin` header is present it must start with `chrome-extension://`. Otherwise return `401`. (Chrome sends no `Origin` for fetches from an extension with host permissions, so a missing `Origin` is allowed.)
   - Token: 32 random bytes as hex, generated on first launch, stored in `UserDefaults`.
 - No CORS headers are sent. `OPTIONS` returns `403`, so web pages cannot send custom headers.
 - Requests over 1MB or with invalid JSON return `400`.
 
 **Extension.**
 - Permissions: `downloads`, `cookies`, `storage`; `host_permissions: ["<all_urls>"]`.
-- Handling `downloads.onCreated(item)`:
-  1. Skip (let Chrome download it) if the extension is disabled, the URL is `blob:`/`data:`, or the size is known and below the threshold (default 5MB).
-  2. `chrome.downloads.pause(item.id)`.
-  3. Get cookies with `chrome.cookies.getAll({url})` and join them as `name=value; …`. Add `item.referrer` and `navigator.userAgent`.
-  4. Send `POST /add` with a 2s timeout (using `AbortController`).
-  5. On success, `cancel` then `erase`. On error or timeout, `resume`.
+- Handling `downloads.onDeterminingFilename(item, suggest)`. It runs after the response headers arrive (so the size is usually known) and before Chrome shows any Save As dialog; Chrome waits for `suggest()`:
+  1. Skip (call `suggest()`, Chrome downloads it) if the extension is disabled, the URL is `blob:`/`data:`, or the size is known and below the threshold (default 5MB).
+  2. Get cookies with `chrome.cookies.getAll({url})` and join them as `name=value; …`. Add `item.referrer` and `navigator.userAgent`.
+  3. Send `POST /add` with a 2s timeout (using `AbortController`).
+  4. On success, `cancel` then `erase` without calling `suggest()`, so no Save As dialog appears. On error or timeout, `suggest()`.
+  - `onCreated` is too early: the PDF viewer's download button opens a Save As dialog that cancelling there does not close.
 - Options page: on/off toggle, port, token, MB threshold, and a "Test connection" button (calls `/ping`).
 
 **Known limitations.**
 - Downloads created by a form POST will break because Gom re-requests them with GET. Temporarily disable the extension on those sites.
-- If Chrome's "Ask where to save each file" is enabled, the save dialog may appear before the extension intercepts. Recommend turning that option off.
-- Very small files may finish before `pause` takes effect. The 5MB threshold covers this.
+- A download handed to Gom is saved in Gom's download folder, not where a Save As dialog would have put it.
 
 ## 7. Testing
 

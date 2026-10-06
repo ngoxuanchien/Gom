@@ -1,0 +1,32 @@
+name: Gom
+options:
+  bundleIdPrefix: com.xuanchien
+  deploymentTarget:
+    macOS: "27.0"
+packages:
+  GomCore:
+    path: GomCore
+targets:
+  Gom:
+    type: application
+    platform: macOS
+    sources:
+      - App
+    dependencies:
+      - package: GomCore
+    info:
+      path: App/Info.plist
+      properties:
+        CFBundleDisplayName: Gom
+        LSApplicationCategoryType: public.app-category.utilities
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoads: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.xuanchien.Gom
+        MARKETING_VERSION: "0.1"
+        CURRENT_PROJECT_VERSION: "1"
+        SWIFT_VERSION: "6.0"
+        CODE_SIGN_IDENTITY: "-"
+        CODE_SIGN_STYLE: Manual
+        ENABLE_HARDENED_RUNTIME: NO
