@@ -1,6 +1,6 @@
 # Gom – Global bandwidth limit
 
-Date: 2026-10-06 · Status: approved
+Date: 2026-10-06 · Status: implemented
 
 ## 1. Goal
 
@@ -44,6 +44,11 @@ Each chunk reserves its own slot, so concurrent segments share the rate fairly i
 - **App** – `@AppStorage("speedLimitKB")`, default 0. Settings → Downloads gets a "Speed limit" number field with a "KB/s" suffix and the footer note "0 = unlimited". `AppSettings.speedLimitKB` reads it; `AppDelegate` applies it to the queue at launch, and `SettingsView` (now given the queue) applies it in `onChange`.
 - **README** – feature bullet and a sentence on the setting.
 
+### Findings from implementation
+
+- `suspend()` calls on a URLSession task are counted, and URLSession keeps delivering already-buffered data to a suspended task. The throttle therefore suspends a task only once and lets the latest timer's single `resume()` win; suspending on every chunk left real tasks stuck until the 60 s request timeout.
+- `suspend()` does not stop the socket instantly: data already read ahead (kernel buffer + CFNetwork) is still delivered. Every byte is charged, so the long-run average holds the cap, but speed is bursty: measured against a local server with 8 connections, short spikes of several MB/s were followed by pauses while the debt was paid. A single connection settled at ~495 KB/s for a 500 KB/s cap. Smoother pacing would need a pull-based HTTP client (e.g. Network.framework), which is out of scope.
+
 ## 4. Error handling
 
 - Negative input is clamped to 0.
@@ -55,5 +60,5 @@ Each chunk reserves its own slot, so concurrent segments share the rate fairly i
 - New `BandwidthLimitTests`, against `MockServer`:
   - **Throughput:** a 2 MiB file (the smallest size that is split, so 8 segments), 16 KB chunks, no server delay, limit 500 000 B/s → finishes in about 4.2 s (assert 3.5–5.0 s) and the file is byte-identical.
   - **Live change:** same file at 100 000 B/s, then after 0.5 s set 0 → finishes in under 3 s (the old limit would need ~21 s).
-- Risk: `MockURLProtocol` may keep calling the client while the task is suspended. Checked first; if so, the mock is taught to pause delivery while its task is suspended.
+- `MockURLProtocol` ignored suspension, so it now stops delivering while its task is suspended (like a socket that isn't read); the bandwidth tests use a 1 ms chunk pace so there is a gap in which to observe that.
 - Manual: a local HTTP server (outside the repo) serving a large file — set 500 KB/s, watch the row speed settle near 500 KB/s and Gom's memory stay flat; change to 0 mid-download and speed jumps at once.

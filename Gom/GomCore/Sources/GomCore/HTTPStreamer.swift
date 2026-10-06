@@ -30,6 +30,8 @@ final class StreamDelegate: NSObject, URLSessionDataDelegate, Sendable {
         }
     }
 
+    /// ponytail: suspend() doesn't stop socket read-ahead, so speed is bursty (average holds);
+    /// a pull-based HTTP client (Network.framework) would pace smoothly if that matters.
     /// Charges `bytes` to the bucket; when overdrawn, suspends `task` so URLSession stops
     /// reading its socket until the debt is paid.
     private func charge(_ bytes: Int, to task: URLSessionTask) {
@@ -38,9 +40,12 @@ final class StreamDelegate: NSObject, URLSessionDataDelegate, Sendable {
             let now = ContinuousClock.now
             t.nextFree = max(now - Self.burst, t.nextFree) + .seconds(Double(bytes) / Double(t.bytesPerSecond))
             guard t.nextFree > now else { return nil }
+            // URLSession still delivers already-buffered data to a suspended task. suspend() calls
+            // are counted, so suspend only once and let the latest timer's single resume() win.
+            let alreadySuspended = t.suspended[task.taskIdentifier] != nil
             t.lastToken += 1
             t.suspended[task.taskIdentifier] = (task, t.lastToken)
-            task.suspend()   // inside the lock so setRate can't resume it before it is suspended
+            if !alreadySuspended { task.suspend() }   // inside the lock so setRate can't resume it first
             return ((t.nextFree - now) / .seconds(1), t.lastToken)
         }
         guard let wait else { return }
