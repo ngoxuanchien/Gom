@@ -256,7 +256,15 @@ private func transferSingle(
 
 private func finish(_ r: inout DownloadRecord) throws {
     guard let temp = r.tempURL, let filename = r.filename else { throw DownloadError.incomplete }
-    r.filename = try moveToUniqueDestination(temp, directory: r.directory, filename: filename).lastPathComponent
+    if r.replaceExisting == true {
+        // rename(2) swaps the file in atomically, so the old one stays until the new one is complete.
+        let destination = r.directory.appending(path: filename)
+        if rename(temp.path(percentEncoded: false), destination.path(percentEncoded: false)) != 0 {
+            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+        }
+    } else {
+        r.filename = try moveToUniqueDestination(temp, directory: r.directory, filename: filename).lastPathComponent
+    }
     r.state = .completed
     r.headers = [:]   // don't keep cookies around once they're no longer needed
 }
