@@ -5,6 +5,7 @@ struct ContentView: View {
     let queue: DownloadQueue
     let videoSetup: VideoSetup
     @State private var input = ""
+    @AppStorage("scheduleNew") private var scheduleNew = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -25,6 +26,8 @@ struct ContentView: View {
                         }
                     }
                     .accessibilityLabel("Links to download")
+                Toggle("Schedule", isOn: $scheduleNew)
+                    .help("Add links as scheduled downloads; they run in the window set in Settings")
                 Button("Add", systemImage: "arrow.down.circle.fill") { addLinks() }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.large)
@@ -68,7 +71,7 @@ struct ContentView: View {
         var anyVideo = false
         for url in urls {
             let video = isVideoPage(url) ? AppSettings.videoQuality : nil
-            queue.add(url: url, directory: AppSettings.downloadDirectory, categories: AppSettings.sortByType ? AppSettings.categories : nil, video: video)
+            queue.add(url: url, directory: AppSettings.downloadDirectory, categories: AppSettings.sortByType ? AppSettings.categories : nil, video: video, scheduled: scheduleNew)
             anyVideo = anyVideo || video != nil
         }
         if anyVideo { Task { await videoSetup.offerInstallIfNeeded() } }
