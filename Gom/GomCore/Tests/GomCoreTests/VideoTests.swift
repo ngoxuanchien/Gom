@@ -38,4 +38,81 @@ import Testing
         let record = DownloadRecord(url: URL(string: "https://youtu.be/x")!, directory: URL(filePath: "/tmp/dl"), id: id, video: .best)
         #expect(record.tempURL?.path(percentEncoded: false) == "/tmp/dl/.gom-12345678/")
     }
+
+    @Test func parsesProgressLines() {
+        // Captured from yt-dlp 2026.08.19.
+        #expect(parseYtDlpLine("GOM 1024 309288 NA 130764.72205815192") == .progress(downloaded: 1024, total: 309288))
+        #expect(parseYtDlpLine("GOM 2048 NA 500000.5 NA") == .progress(downloaded: 2048, total: 500000))
+        #expect(parseYtDlpLine("GOM 2048 NA NA NA") == .progress(downloaded: 2048, total: nil))
+    }
+
+    @Test func parsesOddNumbers() {
+        #expect(parseYtDlpLine("GOM 309288.0 309288.0 NA NA") == .progress(downloaded: 309288, total: 309288))
+        #expect(parseYtDlpLine("GOM nan inf NA NA") == nil)
+        #expect(parseYtDlpLine("GOM NA 100 NA NA") == nil)
+        #expect(parseYtDlpLine("GOM") == nil)
+    }
+
+    @Test func parsesTitleAndFile() {
+        #expect(parseYtDlpLine("GOMNAME Me at the zoo") == .title("Me at the zoo"))
+        #expect(parseYtDlpLine("GOMFILE /tmp/x/Me at the zoo [jNQXAC9IVRw].m4a") == .file("/tmp/x/Me at the zoo [jNQXAC9IVRw].m4a"))
+    }
+
+    @Test func ignoresOtherOutput() {
+        #expect(parseYtDlpLine("[youtube] jNQXAC9IVRw: Downloading webpage") == nil)
+        #expect(parseYtDlpLine("") == nil)
+        #expect(parseYtDlpLine("GOMBLE 1 2") == nil)
+    }
+
+    @Test func bytesKeepGrowingAcrossStreams() {
+        var progress = StreamProgress()
+        #expect(progress.update(downloaded: 40, total: 100) == (40, 100))
+        #expect(progress.update(downloaded: 100, total: 100) == (100, 100))
+        // Audio stream starts: its counter restarts below the previous value.
+        #expect(progress.update(downloaded: 10, total: 50) == (110, 150))
+        #expect(progress.update(downloaded: 50, total: nil) == (150, nil))
+    }
+
+    @Test func argumentsDropCookies() {
+        let args = ytDlpArguments(
+            url: URL(string: "https://youtu.be/abc")!, quality: .p720,
+            ffmpeg: URL(filePath: "/opt/homebrew/bin/ffmpeg"), folder: URL(filePath: "/tmp/dl/.gom-1"),
+            limitRate: 500_000,
+            headers: ["Cookie": "secret=1", "User-Agent": "UA", "Referer": "https://youtube.com/"]
+        )
+        #expect(!args.joined(separator: " ").contains("secret"))
+        #expect(args.contains("User-Agent:UA"))
+        #expect(args.contains("Referer:https://youtube.com/"))
+        #expect(args.suffix(2) == ["--", "https://youtu.be/abc"])
+        #expect(args.contains("res:720,ext:mp4:m4a"))
+        let rate = args.firstIndex(of: "--limit-rate")!
+        #expect(args[rate + 1] == "500000")
+        let folder = args.firstIndex(of: "-P")!
+        #expect(args[folder + 1] == "/tmp/dl/.gom-1")
+    }
+
+    @Test func argumentsOmitLimitWhenUnlimited() {
+        let args = ytDlpArguments(url: URL(string: "https://youtu.be/abc")!, quality: .best, ffmpeg: URL(filePath: "/f"), folder: URL(filePath: "/d"), limitRate: 0, headers: [:])
+        #expect(!args.contains("--limit-rate"))
+        #expect(!args.contains("--add-header"))
+    }
+
+    @Test func locateToolTakesFirstExecutableCandidate() {
+        let dirs = [URL(filePath: "/opt/homebrew/bin"), URL(filePath: "/usr/local/bin"), URL(filePath: "/Users/me/.local/bin")]
+        let found = locateTool("yt-dlp", in: dirs) { $0.path(percentEncoded: false) == "/Users/me/.local/bin/yt-dlp" }
+        #expect(found?.path(percentEncoded: false) == "/Users/me/.local/bin/yt-dlp")
+        #expect(locateTool("yt-dlp", in: dirs) { _ in false } == nil)
+    }
+
+    @Test func toolDirectoriesAppendLoginShellPATHWithoutDuplicates() {
+        let paths = toolDirectories(loginShellPATH: "/usr/local/bin:/Users/me/bin:").map { $0.path(percentEncoded: false) }
+        #expect(Array(paths.prefix(2)) == ["/opt/homebrew/bin/", "/usr/local/bin/"])
+        #expect(paths.last == "/Users/me/bin/")
+        #expect(paths.filter { $0 == "/usr/local/bin/" }.count == 1)
+    }
+
+    @Test func missingTools() {
+        #expect(VideoTools(ffmpeg: URL(filePath: "/f")).missing == ["yt-dlp"])
+        #expect(VideoTools().missing == ["yt-dlp", "ffmpeg"])
+    }
 }
