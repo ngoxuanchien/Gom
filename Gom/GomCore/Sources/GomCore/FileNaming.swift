@@ -74,3 +74,10 @@ public func categoryFolder(for filename: String, in categories: [FileCategory]) 
     guard let folder = match?.folder.trimmingCharacters(in: .whitespaces), !folder.isEmpty else { return nil }
     return sanitizeFilename(folder)   // typed by the user, but must stay one level inside the download folder
 }
+
+/// The category a download belongs to in the sidebar. Before the name is known it guesses from the URL;
+/// a video page counts as the format yt-dlp will produce.
+public func categoryFolder(of record: DownloadRecord, in categories: [FileCategory]) -> String? {
+    let name = record.filename ?? record.video.map { $0 == .audio ? "x.m4a" : "x.mp4" } ?? record.url.lastPathComponent
+    return categoryFolder(for: name, in: categories)
+}

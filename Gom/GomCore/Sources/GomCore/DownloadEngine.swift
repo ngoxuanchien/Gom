@@ -119,6 +119,12 @@ private func prepare(_ r: inout DownloadRecord, streamer: HTTPStreamer, maxAttem
     }
 }
 
+/// The name the server gives `url` (Content-Disposition, else the final URL), or nil if it can't be asked.
+public func serverFilename(url: URL, headers: [String: String], streamer: HTTPStreamer) async -> String? {
+    let record = DownloadRecord(url: url, headers: headers, directory: .temporaryDirectory)
+    return try? await sanitizeFilename(probe(record, streamer: streamer).filename)
+}
+
 private func probe(_ r: DownloadRecord, streamer: HTTPStreamer) async throws -> ProbeInfo {
     var request = makeRequest(r)
     request.setValue("bytes=0-0", forHTTPHeaderField: "Range")

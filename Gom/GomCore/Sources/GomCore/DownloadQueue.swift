@@ -59,6 +59,11 @@ public final class DownloadQueue {
         set { streamer.bytesPerSecond = newValue }
     }
 
+    /// Asks the server what the file is called before it is queued, e.g. to open the save panel in its category folder.
+    public func serverFilename(for url: URL, headers: [String: String]) async -> String? {
+        await GomCore.serverFilename(url: url, headers: headers, streamer: streamer)
+    }
+
     @discardableResult
     public func add(url: URL, headers: [String: String] = [:], filename: String? = nil, directory: URL, categories: [FileCategory]? = nil, video: VideoQuality? = nil, scheduled: Bool = false) -> UUID {
         if let existing = items.first(where: { $0.url == url && $0.video == video && $0.state != .completed }) {

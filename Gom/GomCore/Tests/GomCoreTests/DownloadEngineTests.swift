@@ -130,6 +130,13 @@ import Testing
         #expect(try contents(result) == data)
     }
 
+    @Test func serverFilenameReadsContentDisposition() async {
+        let (named, _) = MockServer.serve(.init(data: testData(1000), extraHeaders: ["Content-Disposition": #"attachment; filename="book.pdf""#]), path: "/upload_file")
+        let (missing, _) = MockServer.serve(.init(data: Data(), status: 404))
+        #expect(await serverFilename(url: named, headers: [:], streamer: MockServer.streamer()) == "book.pdf")
+        #expect(await serverFilename(url: missing, headers: [:], streamer: MockServer.streamer()) == nil)
+    }
+
     @Test func transientFailuresAreRetried() async throws {
         let dir = try makeTempDir()
         let data = testData(5_000_000)

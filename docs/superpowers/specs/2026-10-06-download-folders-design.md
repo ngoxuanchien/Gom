@@ -28,7 +28,7 @@ Folders are created only when a file first needs them.
 | Where the download comes from | What happens |
 |---|---|
 | Pasted or dropped link | Queued with the download folder plus the category list. The engine sorts the file once the name is known, so a name that only comes from `Content-Disposition` (e.g. `download.php?id=…`) is sorted too. |
-| Browser extension | The "Save Here" panel opens in the file's category folder (created if needed). The folder the user picks is final. |
+| Browser extension | The "Save Here" panel opens in the file's category folder (created if needed). The folder the user picks is final. Without a filename from Chrome, Gom asks the server first; see [category sidebar](2026-10-07-category-sidebar-design.md). |
 | Sorting turned off | Everything goes to the download folder, as before. |
 
 Rules:
