@@ -19,7 +19,7 @@
 ### Browser
 
 - Chrome / Arc / Brave / Edge extension that intercepts downloads (optionally only above a size threshold) and sends them to Gom, with cookies and Referer so logged-in downloads work. If Gom is not running, the browser downloads the file itself.
-- Downloads from the browser bring Gom to the front and ask which folder to save into. The folder picker opens in the file's category folder (e.g. `~/Downloads/Documents` for a PDF).
+- Downloads from the browser bring Gom to the front and ask where to save and under what name; the file can be renamed there (a name typed without an extension keeps the original one). The save dialog opens in the file's category folder (e.g. `~/Downloads/Documents` for a PDF).
 
 ### Organizing
 
