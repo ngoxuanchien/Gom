@@ -23,7 +23,7 @@ struct ContentView: View {
     }
 
     private var visibleItems: [DownloadRecord] {
-        category.isEmpty ? queue.items : queue.items.filter { group(of: $0) == category }
+        (category.isEmpty ? queue.items : queue.items.filter { group(of: $0) == category }).reversed()
     }
 
     var body: some View {

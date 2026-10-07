@@ -11,6 +11,7 @@
 - Optional speed limit (Settings → Speed limit, in KB/s; 0 = unlimited) that caps all downloads together and applies to running downloads immediately.
 - Scheduled downloads: mark downloads (right-click → Start in Schedule, or the Schedule toggle when adding) to run only in a daily window (Settings → Schedule, e.g. 01:00–06:00). They pause when the window closes and continue the next time it opens. Optionally quit Gom or put the Mac to sleep once they finish, after a 60-second countdown you can cancel.
 - Add downloads by pasting a URL or dragging a link into the window.
+- The download list shows the newest first; open a finished file with its Open button, right-click → Open, or a double-click.
 - Chrome / Arc / Brave / Edge extension that intercepts downloads (optionally only above a size threshold) and sends them to Gom, with cookies and Referer so logged-in downloads work. If Gom is not running, the browser downloads the file itself.
 - Downloads from the browser bring Gom to the front and ask which folder to save into.
 - Menu bar item showing how many downloads are running and the total speed; its popover lists unfinished downloads with progress and has Pause All, Resume All, Open Gom and Quit.
