@@ -53,6 +53,27 @@ echo "GOMFILE $dir/Test Clip [abc].mp4"
         #expect(second.filename == "Test Clip [abc] (1).mp4")
     }
 
+    @Test func progressArrivesWhileYtDlpIsStillRunning() async throws {
+        let dir = try makeTempDir()
+        let tools = try fakeYtDlp("""
+        echo "GOMNAME Slow Clip"
+        sleep 0.3
+        echo "GOM 10 100 NA NA"
+        sleep 3
+        printf 'video' > "$dir/Slow Clip [abc].mp4"
+        echo "GOMFILE $dir/Slow Clip [abc].mp4"
+        """)
+        let start = ContinuousClock.now
+        let first = Locked<(Duration, String?)?>(nil)
+        let result = await runVideoDownload(videoRecord(dir), tools: tools) { record in
+            first.mutate { if $0 == nil { $0 = (ContinuousClock.now - start, record.filename) } }
+        }
+        #expect(result.state == .completed)
+        let (elapsed, filename) = try #require(first.value)
+        #expect(elapsed < .milliseconds(1500))
+        #expect(filename == "Slow Clip")
+    }
+
     @Test func failureUsesLastErrorLine() async throws {
         let tools = try fakeYtDlp("""
         echo "WARNING: something" >&2

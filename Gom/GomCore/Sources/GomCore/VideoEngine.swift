@@ -63,7 +63,7 @@ public func runVideoDownload(
     }
 }
 
-/// Runs yt-dlp and passes each understood stdout line to `onEvent`, with bytes accumulated across streams.
+/// Runs yt-dlp and passes each understood output line to `onEvent`, with bytes accumulated across streams.
 /// Returns the finished file's path (the `GOMFILE` line).
 private func runYtDlp(_ executable: URL, _ arguments: [String], path: String, onEvent: @escaping @Sendable (YtDlpEvent) -> Void) async throws -> String {
     let process = Process()
@@ -72,9 +72,10 @@ private func runYtDlp(_ executable: URL, _ arguments: [String], path: String, on
     process.standardInput = FileHandle.nullDevice
     // Python block-buffers stdout when it's a pipe, which would make progress arrive in bursts.
     process.environment = ProcessInfo.processInfo.environment.merging(["PYTHONUNBUFFERED": "1", "PATH": path]) { $1 }
-    let stdout = Pipe(), stderr = Pipe()
-    process.standardOutput = stdout
-    process.standardError = stderr
+    // One pipe for both streams: two concurrent FileHandle.bytes readers share a blocking reader, which held stdout back until stderr closed.
+    let output = Pipe()
+    process.standardOutput = output
+    process.standardError = output
     let exited = AsyncStream<Int32> { continuation in
         process.terminationHandler = { continuation.yield($0.terminationStatus); continuation.finish() }
     }
@@ -83,10 +84,11 @@ private func runYtDlp(_ executable: URL, _ arguments: [String], path: String, on
     // ponytail: SIGINT reaches yt-dlp only; an ffmpeg merge it started may run to the end. Signal the process group if that shows up.
     // A yt-dlp that ignores SIGINT is killed after 5 s so pause and quit can't hang.
     return try await withTaskCancellationHandler {
-        async let lastError = lastErrorLine(stderr.fileHandleForReading)
         var progress = StreamProgress()
         var file: String?
-        for try await line in stdout.fileHandleForReading.bytes.lines {
+        var error: String?
+        for try await line in output.fileHandleForReading.bytes.lines {
+            if line.hasPrefix("ERROR: ") { error = String(line.dropFirst("ERROR: ".count)) }
             switch parseYtDlpLine(line) {
             case .progress(let downloaded, let total)?:
                 let (done, sum) = progress.update(downloaded: downloaded, total: total)
@@ -101,7 +103,6 @@ private func runYtDlp(_ executable: URL, _ arguments: [String], path: String, on
         }
         var status: Int32 = -1
         for await code in exited { status = code }
-        let error = try await lastError
         try Task.checkCancellation()
         guard status == 0 else { throw VideoError(message: error ?? "yt-dlp exited with status \(status)") }
         guard let file else { throw VideoError(message: "yt-dlp finished without a file") }
@@ -112,15 +113,6 @@ private func runYtDlp(_ executable: URL, _ arguments: [String], path: String, on
             if process.isRunning { kill(process.processIdentifier, SIGKILL) }
         }
     }
-}
-
-/// The last `ERROR:` line yt-dlp wrote, without the prefix.
-private func lastErrorLine(_ handle: FileHandle) async throws -> String? {
-    var last: String?
-    for try await line in handle.bytes.lines where line.hasPrefix("ERROR: ") {
-        last = String(line.dropFirst("ERROR: ".count))
-    }
-    return last
 }
 
 /// Moves yt-dlp's file out of the temp folder into the download (or category) folder and removes the temp folder.
