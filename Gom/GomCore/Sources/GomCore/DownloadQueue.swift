@@ -136,6 +136,12 @@ public final class DownloadQueue {
         schedule()
     }
 
+    /// Drops the downloads from the sidebar's unseen counts.
+    public func markSeen(_ ids: [UUID]) {
+        for id in ids { update(id) { $0.unseen = nil } }
+        persist()
+    }
+
     /// Unfinished downloads always lose their temp file; `deleteFile` also deletes a finished file.
     public func remove(_ id: UUID, deleteFile: Bool) {
         guard let record = items.first(where: { $0.id == id }) else { return }
@@ -214,7 +220,10 @@ public final class DownloadQueue {
         var result = result
         let requeued = requeueing.remove(id) != nil && result.state == .paused
         if requeued { result.state = .queued }   // the window closed: wait for it to open again
-        if result.state == .completed { result.completedAt = .now }
+        if result.state == .completed {
+            result.completedAt = .now
+            result.unseen = true
+        }
         if items.contains(where: { $0.id == id }) {
             update(id) { result.scheduled = $0.scheduled; $0 = result }
             if result.state != .paused && !requeued {

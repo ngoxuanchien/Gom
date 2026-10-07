@@ -25,6 +25,8 @@ public struct DownloadRecord: Codable, Identifiable, Equatable, Sendable {
     public var addedAt: Date
     /// When the download finished; nil until then, and for downloads finished before this was recorded.
     public var completedAt: Date?
+    /// True from completion until the file is opened or marked seen; nil otherwise (never false), so older records count as seen.
+    public var unseen: Bool?
 
     public init(url: URL, headers: [String: String] = [:], filename: String? = nil, directory: URL, categories: [FileCategory]? = nil, id: UUID = UUID(), addedAt: Date = .now, video: VideoQuality? = nil) {
         self.id = id
