@@ -57,7 +57,7 @@ func parseYtDlpLine(_ line: String) -> YtDlpEvent? {
 /// yt-dlp prints integers, floats (estimates), `NA`, and occasionally `nan`/`inf`.
 private func byteCount(_ field: String) -> Int64? {
     guard let value = Double(field), value.isFinite, value >= 0 else { return nil }
-    return Int64(value)
+    return Int64(exactly: value.rounded(.down))
 }
 
 /// yt-dlp downloads video and audio as separate streams, each counting from zero.
@@ -135,10 +135,12 @@ public func toolDirectories(loginShellPATH: String?) -> [URL] {
 }
 
 /// Runs a command to completion and returns its exit status and combined stdout and stderr.
+/// ponytail: reads until pipe EOF (grandchild keeping pipe open causes hang); no cancellation on caller task cancellation.
 public func runProcess(_ executable: URL, _ arguments: [String]) async throws -> (status: Int32, output: String) {
     let process = Process()
     process.executableURL = executable
     process.arguments = arguments
+    process.standardInput = FileHandle.nullDevice
     let pipe = Pipe()
     process.standardOutput = pipe
     process.standardError = pipe

@@ -51,6 +51,7 @@ import Testing
         #expect(parseYtDlpLine("GOM nan inf NA NA") == nil)
         #expect(parseYtDlpLine("GOM NA 100 NA NA") == nil)
         #expect(parseYtDlpLine("GOM") == nil)
+        #expect(parseYtDlpLine("GOM 1e19 NA NA NA") == nil)
     }
 
     @Test func parsesTitleAndFile() {
@@ -114,5 +115,15 @@ import Testing
     @Test func missingTools() {
         #expect(VideoTools(ffmpeg: URL(filePath: "/f")).missing == ["yt-dlp"])
         #expect(VideoTools().missing == ["yt-dlp", "ffmpeg"])
+    }
+
+    @Test func runsProcessToCompletion() async throws {
+        let result1 = try await runProcess(URL(filePath: "/bin/sh"), ["-c", "echo hello; echo oops >&2; exit 3"])
+        #expect(result1.status == 3)
+        #expect(result1.output.contains("hello"))
+        #expect(result1.output.contains("oops"))
+        let result2 = try await runProcess(URL(filePath: "/bin/echo"), ["hi"])
+        #expect(result2.status == 0)
+        #expect(result2.output == "hi\n")
     }
 }
