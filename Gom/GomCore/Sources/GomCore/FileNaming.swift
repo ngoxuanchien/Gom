@@ -25,6 +25,16 @@ public func filenameFromContentDisposition(_ header: String) -> String? {
     return nil
 }
 
+/// `name` with `suggested`'s extension added back if the user deleted theirs while renaming.
+/// A different extension they typed is kept.
+public func restoringExtension(_ name: String, from suggested: String) -> String {
+    let ext = (suggested as NSString).pathExtension
+    guard !ext.isEmpty, (name as NSString).pathExtension.isEmpty else { return name }
+    var base = name
+    while base.hasSuffix(".") { base.removeLast() }
+    return "\(base).\(ext)"
+}
+
 /// `directory/filename`, or Finder-style `name (1).ext`, `name (2).ext`… if taken.
 public func uniqueDestination(in directory: URL, filename: String) -> URL {
     let first = directory.appending(path: filename)

@@ -14,6 +14,14 @@ import Testing
         #expect(sanitizeFilename("bad\u{0}name\n.bin") == "badname.bin")
     }
 
+    @Test func restoringExtensionAddsOnlyAMissingOne() {
+        #expect(restoringExtension("bao-cao", from: "report.pdf") == "bao-cao.pdf")
+        #expect(restoringExtension("bao-cao.", from: "report.pdf") == "bao-cao.pdf")
+        #expect(restoringExtension("bao-cao.txt", from: "report.pdf") == "bao-cao.txt")
+        #expect(restoringExtension("backup", from: "data.tar.gz") == "backup.gz")
+        #expect(restoringExtension("notes", from: "README") == "notes")
+    }
+
     @Test func contentDispositionPrefersFilenameStar() {
         #expect(filenameFromContentDisposition(#"attachment; filename="report.pdf""#) == "report.pdf")
         #expect(filenameFromContentDisposition("attachment; filename=plain.zip") == "plain.zip")

@@ -91,16 +91,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                         Task { await videoSetup.offerInstallIfNeeded() }
                     } else {
                         var add = add
-                        if add.filename == nil, AppSettings.sortByType {
+                        if add.filename == nil {
                             add.filename = await Self.serverFilename(for: add, queue: queue)
                         }
-                        Self.chooseFolder(for: add) { directory in
-                            // Saving to the download folder itself still sorts, in case the server couldn't be
-                            // asked for the name above and it only comes with the response.
-                            let sort = AppSettings.sortByType
-                                && directory.standardizedFileURL.path == AppSettings.downloadDirectory.standardizedFileURL.path
-                            queue.add(url: add.url, headers: add.headers, filename: add.filename, directory: directory,
-                                      categories: sort ? AppSettings.categories : nil)
+                        // The file lands exactly where and as the save panel says: no sorting, no server rename.
+                        Self.chooseDestination(for: add) { file in
+                            queue.add(url: add.url, headers: add.headers, filename: file.lastPathComponent,
+                                      directory: file.deletingLastPathComponent())
                         }
                     }
                 }
@@ -217,20 +214,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// Asks where to save a download from the extension. Cancelling drops the download.
-    private static func chooseFolder(for add: AddRequest, then save: @escaping (URL) -> Void) {
-        let panel = NSOpenPanel()
-        panel.canChooseFiles = false
-        panel.canChooseDirectories = true
+    /// Asks where to save a download from the extension and under what name. Cancelling drops the download.
+    /// A name typed without an extension gets the suggested one back.
+    private static func chooseDestination(for add: AddRequest, then save: @escaping (URL) -> Void) {
+        let suggested = add.filename ?? add.url.lastPathComponent
+        let panel = NSSavePanel()
         panel.canCreateDirectories = true
         // Start in the file's category folder; it must exist for the panel to open there.
-        let directory = AppSettings.directory(for: add.filename ?? add.url.lastPathComponent)
+        let directory = AppSettings.directory(for: suggested)
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         panel.directoryURL = directory
-        panel.prompt = "Save Here"
-        panel.message = "Choose where to save \(add.filename ?? add.url.lastPathComponent)"
+        panel.nameFieldStringValue = suggested
         panel.begin { response in
-            if response == .OK, let url = panel.url { save(url) }
+            guard response == .OK, let url = panel.url else { return }
+            save(url.deletingLastPathComponent().appending(path: restoringExtension(url.lastPathComponent, from: suggested)))
         }
     }
 
