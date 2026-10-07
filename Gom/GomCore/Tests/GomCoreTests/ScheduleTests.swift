@@ -161,4 +161,72 @@ import Testing
         #expect(relaunched.items.first?.state == .queued)
         #expect(relaunched.activeCount == 0)
     }
+
+    @Test func endActionFiresOnceAfterScheduledAndOtherDownloadsFinish() async throws {
+        let dir = try makeTempDir()
+        let queue = makeQueue(dir)
+        var fired = 0
+        queue.onScheduleFinished = { fired += 1 }
+        queue.refreshSchedule(now: inside)
+        let (other, otherFile) = MockServer.serve(.init(data: testData(5_000_000), chunkDelay: 0.5), path: "/other.bin")
+        let (first, _) = MockServer.serve(.init(data: testData(100_000)), path: "/one.bin")
+        let (second, _) = MockServer.serve(.init(data: testData(200_000)), path: "/two.bin")
+        let unscheduled = queue.add(url: other, directory: dir)
+        let a = queue.add(url: first, directory: dir, scheduled: true)
+        let b = queue.add(url: second, directory: dir, scheduled: true)
+
+        try await waitUntil { record(queue, a)?.state == .completed && record(queue, b)?.state == .completed }
+        #expect(fired == 0)   // an unscheduled download is still running
+
+        otherFile.state.withLock { $0.chunkDelay = 0 }
+        try await waitUntil { record(queue, unscheduled)?.state == .completed }
+        #expect(fired == 1)
+        queue.refreshSchedule(now: inside)
+        #expect(fired == 1)
+    }
+
+    @Test func closingWindowWithWorkLeftDoesNotFire() async throws {
+        let dir = try makeTempDir()
+        let queue = makeQueue(dir)
+        var fired = 0
+        queue.onScheduleFinished = { fired += 1 }
+        queue.refreshSchedule(now: inside)
+        let (url, _) = MockServer.serve(.init(data: testData(5_000_000), chunkDelay: 0.1))
+        let id = queue.add(url: url, directory: dir, scheduled: true)
+        try await waitUntil { (record(queue, id)?.downloadedBytes ?? 0) > 0 }
+
+        queue.refreshSchedule(now: outside)
+        try await waitUntil { record(queue, id)?.state == .queued && queue.activeCount == 0 }
+        #expect(fired == 0)
+    }
+
+    @Test func manuallyPausedScheduledDownloadDoesNotBlock() async throws {
+        let dir = try makeTempDir()
+        let queue = makeQueue(dir)
+        var fired = 0
+        queue.onScheduleFinished = { fired += 1 }
+        queue.refreshSchedule(now: inside)
+        let (slow, _) = MockServer.serve(.init(data: testData(5_000_000), chunkDelay: 0.5), path: "/slow.bin")
+        let (fast, _) = MockServer.serve(.init(data: testData(100_000)), path: "/fast.bin")
+        let paused = queue.add(url: slow, directory: dir, scheduled: true)
+        let done = queue.add(url: fast, directory: dir, scheduled: true)
+
+        queue.pause(paused)
+        try await waitUntil { record(queue, paused)?.state == .paused && record(queue, done)?.state == .completed }
+        #expect(fired == 1)
+    }
+
+    @Test func shutdownDoesNotFire() async throws {
+        let dir = try makeTempDir()
+        let queue = makeQueue(dir)
+        var fired = 0
+        queue.onScheduleFinished = { fired += 1 }
+        queue.refreshSchedule(now: inside)
+        let (url, _) = MockServer.serve(.init(data: testData(5_000_000), chunkDelay: 0.1))
+        let id = queue.add(url: url, directory: dir, scheduled: true)
+        try await waitUntil { (record(queue, id)?.downloadedBytes ?? 0) > 0 }
+
+        await queue.shutdown()
+        #expect(fired == 0)
+    }
 }

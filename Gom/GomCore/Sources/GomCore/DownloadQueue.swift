@@ -9,6 +9,8 @@ public final class DownloadQueue {
     public var highlighted: UUID?
     /// Called when a download ends completed or failed; not on pause, removal or shutdown.
     @ObservationIgnored public var onFinished: ((DownloadRecord) -> Void)?
+    /// Called once all scheduled downloads that ran are completed or failed and nothing else is downloading.
+    @ObservationIgnored public var onScheduleFinished: (() -> Void)?
     /// Where yt-dlp, ffmpeg and deno are. Set by the app at launch and after installing them.
     @ObservationIgnored public var videoTools: VideoTools
     /// Daily window scheduled downloads run in; nil = they never start. Set by the app, then call `refreshSchedule()`.
@@ -214,6 +216,15 @@ public final class DownloadQueue {
         }
         persist()
         schedule()
+        checkScheduleFinished()
+    }
+
+    /// Scheduled downloads paused by hand don't count as pending; ones requeued at window close do.
+    private func checkScheduleFinished() {
+        guard scheduledRunPending, !shuttingDown, running.isEmpty,
+              !items.contains(where: { $0.scheduled == true && ($0.state == .queued || $0.state == .downloading) }) else { return }
+        scheduledRunPending = false
+        onScheduleFinished?()
     }
 
     private func update(_ id: UUID, _ change: (inout DownloadRecord) -> Void) {
