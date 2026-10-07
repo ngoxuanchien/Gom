@@ -6,8 +6,77 @@ struct ContentView: View {
     let videoSetup: VideoSetup
     @State private var input = ""
     @AppStorage("scheduleNew") private var scheduleNew = false
+    /// "" shows every download, `otherGroup` those matching no folder, anything else a folder name.
+    @SceneStorage("category") private var category = ""
+    /// Read so the sidebar redraws when the folders are edited in Settings.
+    @AppStorage("fileCategories") private var categoriesData: Data?
+
+    private let otherGroup = "\u{1}other"   // can't collide: folder names are sanitized filenames
+
+    private var categories: [FileCategory] {
+        _ = categoriesData
+        return AppSettings.categories
+    }
+
+    private func group(of item: DownloadRecord) -> String {
+        categoryFolder(of: item, in: categories) ?? otherGroup
+    }
+
+    private var visibleItems: [DownloadRecord] {
+        category.isEmpty ? queue.items : queue.items.filter { group(of: $0) == category }
+    }
 
     var body: some View {
+        NavigationSplitView {
+            sidebar
+        } detail: {
+            downloads
+        }
+        .frame(minWidth: 720, minHeight: 360)
+        // A new download may not match the open folder; show everything so it isn't hidden.
+        .onChange(of: queue.items.count) { old, new in
+            if new > old { category = "" }
+        }
+    }
+
+    private var sidebar: some View {
+        let counts = Dictionary(grouping: queue.items, by: group(of:)).mapValues(\.count)
+        var folders: [String] = []
+        for c in categories {
+            let folder = c.folder.trimmingCharacters(in: .whitespaces)
+            if !folder.isEmpty, !folders.contains(sanitizeFilename(folder)) { folders.append(sanitizeFilename(folder)) }
+        }
+        return List(selection: $category) {
+            Label("All", systemImage: "tray.full")
+                .badge(queue.items.count)
+                .tag("")
+            Section("Folders") {
+                ForEach(folders, id: \.self) { folder in
+                    Label(folder, systemImage: icon(for: folder))
+                        .badge(counts[folder] ?? 0)
+                        .tag(folder)
+                }
+                Label("Other", systemImage: "questionmark.folder")
+                    .badge(counts[otherGroup] ?? 0)
+                    .tag(otherGroup)
+            }
+        }
+        .navigationSplitViewColumnWidth(min: 160, ideal: 180)
+    }
+
+    private func icon(for folder: String) -> String {
+        switch folder {
+        case "Documents": "doc.text"
+        case "Compressed": "doc.zipper"
+        case "Music": "music.note"
+        case "Video": "film"
+        case "Programs": "shippingbox"
+        case "Images": "photo"
+        default: "folder"
+        }
+    }
+
+    private var downloads: some View {
         VStack(spacing: 0) {
             HStack(alignment: .center, spacing: 12) {
                 Image(systemName: "link")
@@ -39,7 +108,7 @@ struct ContentView: View {
             .background(.quaternary.opacity(0.5), in: .rect(cornerRadius: 10))
             .padding()
             Divider()
-            List(queue.items) { item in
+            List(visibleItems) { item in
                 DownloadRow(item: item, speed: queue.speeds[item.id], queue: queue)
                     .listRowBackground(queue.highlighted == item.id ? Color.accentColor.opacity(0.15) : nil)
             }
@@ -50,6 +119,8 @@ struct ContentView: View {
                         systemImage: "tray.and.arrow.down",
                         description: Text("Paste links above, drop them here, or download from the browser.")
                     )
+                } else if visibleItems.isEmpty {
+                    ContentUnavailableView("Nothing Here", systemImage: "folder", description: Text("No downloads match this folder."))
                 }
             }
             .dropDestination(for: URL.self) { urls, _ in
@@ -58,7 +129,6 @@ struct ContentView: View {
                 return !valid.isEmpty
             }
         }
-        .frame(minWidth: 560, minHeight: 360)
     }
 
     private func addLinks() {

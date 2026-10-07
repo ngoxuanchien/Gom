@@ -57,6 +57,21 @@ import Testing
         #expect(categoryFolder(for: "a.p", in: custom) == nil)
     }
 
+    @Test func categoryFolderOfRecordFallsBackToURLAndVideo() {
+        let dir = URL(filePath: "/tmp")
+        let defaults = defaultFileCategories
+        let named = DownloadRecord(url: URL(string: "https://x.com/download.php?id=1")!, filename: "book.epub", directory: dir)
+        let unnamed = DownloadRecord(url: URL(string: "https://x.com/a/setup.dmg")!, directory: dir)
+        let unknown = DownloadRecord(url: URL(string: "https://x.com/upload_file")!, directory: dir)
+        let video = DownloadRecord(url: URL(string: "https://youtube.com/watch?v=1")!, directory: dir, video: .best)
+        let audio = DownloadRecord(url: URL(string: "https://youtube.com/watch?v=2")!, directory: dir, video: .audio)
+        #expect(categoryFolder(of: named, in: defaults) == "Documents")
+        #expect(categoryFolder(of: unnamed, in: defaults) == "Programs")
+        #expect(categoryFolder(of: unknown, in: defaults) == nil)
+        #expect(categoryFolder(of: video, in: defaults) == "Video")
+        #expect(categoryFolder(of: audio, in: defaults) == "Music")
+    }
+
     @Test func parseURLListKeepsOnlyHTTP() {
         let text = """
         https://example.com/a.iso

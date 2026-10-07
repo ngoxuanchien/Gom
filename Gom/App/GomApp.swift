@@ -79,8 +79,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                                   categories: AppSettings.sortByType ? AppSettings.categories : nil, video: video)
                         Task { await videoSetup.offerInstallIfNeeded() }
                     } else {
+                        var add = add
+                        if add.filename == nil, AppSettings.sortByType {
+                            add.filename = await Self.serverFilename(for: add, queue: queue)
+                        }
                         Self.chooseFolder(for: add) { directory in
-                            queue.add(url: add.url, headers: add.headers, filename: add.filename, directory: directory)
+                            // Saving to the download folder itself still sorts, in case the server couldn't be
+                            // asked for the name above and it only comes with the response.
+                            let sort = AppSettings.sortByType
+                                && directory.standardizedFileURL.path == AppSettings.downloadDirectory.standardizedFileURL.path
+                            queue.add(url: add.url, headers: add.headers, filename: add.filename, directory: directory,
+                                      categories: sort ? AppSettings.categories : nil)
                         }
                     }
                 }
@@ -180,6 +189,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         } else {
             // The window was closed: a reopen event makes SwiftUI recreate it, like clicking the Dock icon.
             NSWorkspace.shared.open(Bundle.main.bundleURL)
+        }
+    }
+
+    /// Chrome usually sends the name; without it the save panel can't pick the category folder, so ask the
+    /// server. Gives up after 5 s so a slow server doesn't hold the panel back.
+    private static func serverFilename(for add: AddRequest, queue: DownloadQueue) async -> String? {
+        await withTaskGroup(of: String?.self) { group in
+            group.addTask { await queue.serverFilename(for: add.url, headers: add.headers) }
+            group.addTask { try? await Task.sleep(for: .seconds(5)); return nil }
+            let first = await group.next() ?? nil
+            group.cancelAll()
+            return first
         }
     }
 
