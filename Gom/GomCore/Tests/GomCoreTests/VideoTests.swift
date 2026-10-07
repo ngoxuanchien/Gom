@@ -110,6 +110,7 @@ import Testing
     @Test func toolDirectoriesAppendLoginShellPATHWithoutDuplicates() {
         let paths = toolDirectories(loginShellPATH: "/usr/local/bin:.:bin:/Users/me/bin:").map { $0.path(percentEncoded: false) }
         #expect(Array(paths.prefix(2)) == ["/opt/homebrew/bin/", "/usr/local/bin/"])
+        #expect(paths.contains(URL.homeDirectory.appending(path: ".deno/bin/").path(percentEncoded: false)))
         #expect(paths.last == "/Users/me/bin/")
         #expect(paths.filter { $0 == "/usr/local/bin/" }.count == 1)
         #expect(!paths.contains { !$0.hasPrefix("/") })

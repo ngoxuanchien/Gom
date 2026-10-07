@@ -141,7 +141,8 @@ public func locateTool(
 /// Apps started from Finder don't get the shell's PATH, so the usual install folders come first,
 /// then whatever the login shell adds (pass its `$PATH`).
 public func toolDirectories(loginShellPATH: String?) -> [URL] {
-    var paths = ["/opt/homebrew/bin", "/usr/local/bin", URL.homeDirectory.appending(path: ".local/bin").path(percentEncoded: false)]
+    let home = URL.homeDirectory
+    var paths = ["/opt/homebrew/bin", "/usr/local/bin", home.appending(path: ".local/bin").path(percentEncoded: false), home.appending(path: ".deno/bin").path(percentEncoded: false)]
     for path in (loginShellPATH ?? "").split(separator: ":").map(String.init) where path.hasPrefix("/") && !paths.contains(path) {
         paths.append(path)
     }

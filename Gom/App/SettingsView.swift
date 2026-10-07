@@ -97,7 +97,7 @@ struct SettingsView: View {
                             ProgressView().controlSize(.small)
                             Text("Installing…").foregroundStyle(.secondary)
                         } else {
-                            Button("Install") { Task { await videoSetup.offerInstallIfNeeded() } }
+                            Button("Install") { Task { await videoSetup.offerInstallIfNeeded(includingOptional: true) } }
                         }
                     }
                 }

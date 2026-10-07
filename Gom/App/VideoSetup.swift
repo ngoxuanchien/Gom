@@ -30,14 +30,20 @@ final class VideoSetup {
         if tools.ytDlp != nil && tools.ffmpeg != nil { queue.retryMissingTools() }   // deno is optional
     }
 
-    /// Called after a video is added and from Settings: asks to install whatever is missing.
-    func offerInstallIfNeeded() async {
+    /// Asks to install what is missing. Automatic callers only prompt for yt-dlp/ffmpeg; Settings passes
+    /// `includingOptional` so deno-only is offered too. Installing always covers everything missing.
+    func offerInstallIfNeeded(includingOptional: Bool = false) async {
         if !located { await refresh() }
-        guard !tools.missing.isEmpty, !installing, !prompting else { return }
+        let required = tools.missing.filter { $0 != "deno" }
+        guard includingOptional ? !tools.missing.isEmpty : !required.isEmpty, !installing, !prompting else { return }
         prompting = true
         defer { prompting = false }
         let alert = NSAlert()
-        alert.messageText = "Video downloads need \(tools.missing.joined(separator: " and "))"
+        if required.isEmpty {
+            alert.messageText = "YouTube works best with deno"
+        } else {
+            alert.messageText = "Video downloads need \(required.dropLast().joined(separator: ", "))\(required.count > 1 ? " and " : "")\(required.last!)"
+        }
         if tools.brew != nil {
             alert.informativeText = "Gom can install them with Homebrew. Videos waiting for them start once it's done."
             alert.addButton(withTitle: "Install")
