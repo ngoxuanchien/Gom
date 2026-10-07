@@ -10,6 +10,13 @@ struct DownloadRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
+            // Mail-style dot for a finished file not opened yet; kept in the layout so rows stay aligned.
+            Circle()
+                .fill(Color.accentColor)
+                .frame(width: 8, height: 8)
+                .opacity(item.unseen == true ? 1 : 0)
+                .accessibilityHidden(item.unseen != true)
+                .accessibilityLabel("Not opened yet")
             Image(nsImage: fileIcon)
                 .resizable()
                 .frame(width: 32, height: 32)
@@ -27,11 +34,11 @@ struct DownloadRow: View {
         .padding(.vertical, 4)
         .contentShape(Rectangle())
         .onTapGesture(count: 2) {
-            if item.state == .completed, let url = item.fileURL { NSWorkspace.shared.open(url) }
+            if item.state == .completed, let url = item.fileURL { open(url) }
         }
         .contextMenu {
             if item.state == .completed, let url = item.fileURL {
-                Button("Open") { NSWorkspace.shared.open(url) }
+                Button("Open") { open(url) }
             }
             if item.state != .completed {
                 if item.scheduled == true {
@@ -103,15 +110,23 @@ struct DownloadRow: View {
                 iconButton("arrow.clockwise", "Retry") { queue.resume(item.id) }
             case .completed:
                 iconButton("arrow.up.forward.app", "Open") {
-                    if let url = item.fileURL { NSWorkspace.shared.open(url) }
+                    if let url = item.fileURL { open(url) }
                 }
                 iconButton("folder", "Show in Finder") {
-                    if let url = item.fileURL { NSWorkspace.shared.activateFileViewerSelecting([url]) }
+                    if let url = item.fileURL {
+                        queue.markSeen([item.id])
+                        NSWorkspace.shared.activateFileViewerSelecting([url])
+                    }
                 }
             }
             iconButton("xmark", "Remove") { queue.remove(item.id, deleteFile: false) }
         }
         .buttonStyle(.borderless)
+    }
+
+    private func open(_ url: URL) {
+        queue.markSeen([item.id])
+        NSWorkspace.shared.open(url)
     }
 
     private func iconButton(_ symbol: String, _ label: String, action: @escaping () -> Void) -> some View {

@@ -42,7 +42,8 @@ struct ContentView: View {
     }
 
     private var sidebar: some View {
-        let counts = Dictionary(grouping: queue.items, by: group(of:)).mapValues(\.count)
+        // Badges count finished files not opened yet; a zero badge isn't drawn.
+        let unseen = Dictionary(grouping: queue.items.filter { $0.unseen == true }, by: group(of:))
         var folders: [String] = []
         for c in categories {
             let folder = c.folder.trimmingCharacters(in: .whitespaces)
@@ -50,20 +51,29 @@ struct ContentView: View {
         }
         return List(selection: $category) {
             Label("All", systemImage: "tray.full")
-                .badge(queue.items.count)
+                .badge(unseen.values.joined().count)
+                .contextMenu { markSeenButton(unseen.values.joined()) }
                 .tag("")
             Section("Folders") {
                 ForEach(folders, id: \.self) { folder in
                     Label(folder, systemImage: icon(for: folder))
-                        .badge(counts[folder] ?? 0)
+                        .badge(unseen[folder]?.count ?? 0)
+                        .contextMenu { markSeenButton(unseen[folder] ?? []) }
                         .tag(folder)
                 }
                 Label("Other", systemImage: "questionmark.folder")
-                    .badge(counts[otherGroup] ?? 0)
+                    .badge(unseen[otherGroup]?.count ?? 0)
+                    .contextMenu { markSeenButton(unseen[otherGroup] ?? []) }
                     .tag(otherGroup)
             }
         }
         .navigationSplitViewColumnWidth(min: 160, ideal: 180)
+    }
+
+    private func markSeenButton(_ items: some Sequence<DownloadRecord>) -> some View {
+        let ids = items.map(\.id)
+        return Button("Mark All as Seen") { queue.markSeen(ids) }
+            .disabled(ids.isEmpty)
     }
 
     private func icon(for folder: String) -> String {

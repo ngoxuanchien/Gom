@@ -57,6 +57,21 @@ import Testing
         #expect(queue.items.first?.completedAt != nil)
     }
 
+    @Test func completedDownloadIsUnseenUntilMarkedSeen() async throws {
+        let dir = try makeTempDir()
+        let queue = makeQueue(dir)
+        let (url, _) = MockServer.serve(.init(data: testData(100_000)))
+
+        let id = queue.add(url: url, directory: dir)
+        #expect(queue.items.first?.unseen == nil)
+        try await waitUntil { queue.items.first?.state == .completed }
+        #expect(queue.items.first?.unseen == true)
+
+        queue.markSeen([id])
+        #expect(queue.items.first?.unseen == nil)
+        #expect(makeQueue(dir).items.first?.unseen == nil)   // persisted
+    }
+
     @Test func failureCallsOnFinishedButPauseDoesNot() async throws {
         let dir = try makeTempDir()
         let queue = makeQueue(dir)

@@ -24,7 +24,7 @@
 ### Organizing
 
 - Sorts downloads into subfolders by file type (Documents, Compressed, Music, Video, Programs, Images); folders and extensions are editable in Settings.
-- A sidebar filters the download list by the same file types.
+- A sidebar filters the download list by the same file types. Finished files you haven't opened yet get a blue dot, and the sidebar badges count them; right-click a folder → Mark All as Seen to clear one.
 - The download list shows the newest first; open a finished file with its Open button, right-click → Open, or a double-click.
 - The list is grouped by the day each download finished. Today is open; older days are collapsed until you click their header. Unfinished downloads always stay under Today.
 
