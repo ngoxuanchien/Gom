@@ -57,6 +57,25 @@ import Testing
         #expect(queue.items.first?.completedAt != nil)
     }
 
+    @Test func replaceExistingOverwritesTheFileOtherwiseNameGetsCounter() async throws {
+        let dir = try makeTempDir()
+        let queue = makeQueue(dir)
+        let existing = dir.appending(path: "report.bin")
+        try Data("old".utf8).write(to: existing)
+        let data = testData(100_000)
+        let (first, _) = MockServer.serve(.init(data: data))
+        let (second, _) = MockServer.serve(.init(data: data))
+
+        queue.add(url: first, filename: "report.bin", directory: dir)
+        try await waitUntil { queue.items.first?.state == .completed }
+        #expect(queue.items.first?.filename == "report (1).bin")
+
+        queue.add(url: second, filename: "report.bin", directory: dir, replaceExisting: true)
+        try await waitUntil { queue.items.last?.state == .completed }
+        #expect(queue.items.last?.filename == "report.bin")
+        #expect(try Data(contentsOf: existing) == data)
+    }
+
     @Test func failureCallsOnFinishedButPauseDoesNot() async throws {
         let dir = try makeTempDir()
         let queue = makeQueue(dir)

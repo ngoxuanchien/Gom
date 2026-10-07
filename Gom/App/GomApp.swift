@@ -95,9 +95,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                             add.filename = await Self.serverFilename(for: add, queue: queue)
                         }
                         // The file lands exactly where and as the save panel says: no sorting, no server rename.
-                        Self.chooseDestination(for: add) { file in
+                        Self.chooseDestination(for: add) { file, replace in
                             queue.add(url: add.url, headers: add.headers, filename: file.lastPathComponent,
-                                      directory: file.deletingLastPathComponent())
+                                      directory: file.deletingLastPathComponent(), replaceExisting: replace)
                         }
                     }
                 }
@@ -215,8 +215,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// Asks where to save a download from the extension and under what name. Cancelling drops the download.
-    /// A name typed without an extension gets the suggested one back.
-    private static func chooseDestination(for add: AddRequest, then save: @escaping (URL) -> Void) {
+    /// A name typed without an extension gets the suggested one back. The name starts out free ("name (1).ext"
+    /// if taken), so the panel only asks about replacing when the user picks an existing file; then `save` gets
+    /// `true` and the download overwrites it.
+    private static func chooseDestination(for add: AddRequest, then save: @escaping (URL, Bool) -> Void) {
         let suggested = add.filename ?? add.url.lastPathComponent
         let panel = NSSavePanel()
         panel.canCreateDirectories = true
@@ -224,10 +226,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let directory = AppSettings.directory(for: suggested)
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         panel.directoryURL = directory
-        panel.nameFieldStringValue = suggested
+        panel.nameFieldStringValue = uniqueDestination(in: directory, filename: suggested).lastPathComponent
         panel.begin { response in
             guard response == .OK, let url = panel.url else { return }
-            save(url.deletingLastPathComponent().appending(path: restoringExtension(url.lastPathComponent, from: suggested)))
+            let file = url.deletingLastPathComponent().appending(path: restoringExtension(url.lastPathComponent, from: suggested))
+            // The panel confirmed Replace only for the name as typed; a restored extension makes it a different file.
+            let replace = file == url && FileManager.default.fileExists(atPath: url.path(percentEncoded: false))
+            save(file, replace)
         }
     }
 

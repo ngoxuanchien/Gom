@@ -17,6 +17,9 @@ public struct DownloadRecord: Codable, Identifiable, Equatable, Sendable {
     public var video: VideoQuality?
     /// True when the download only runs inside the schedule window; nil otherwise (never false).
     public var scheduled: Bool?
+    /// True when the user chose Replace in the save panel: the finished file overwrites one with the same name
+    /// instead of getting a "(1)" suffix. Nil otherwise (never false).
+    public var replaceExisting: Bool?
     public var totalBytes: Int64?
     public var etag: String?
     public var resumable: Bool

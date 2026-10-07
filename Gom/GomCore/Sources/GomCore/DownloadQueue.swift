@@ -65,13 +65,14 @@ public final class DownloadQueue {
     }
 
     @discardableResult
-    public func add(url: URL, headers: [String: String] = [:], filename: String? = nil, directory: URL, categories: [FileCategory]? = nil, video: VideoQuality? = nil, scheduled: Bool = false) -> UUID {
+    public func add(url: URL, headers: [String: String] = [:], filename: String? = nil, directory: URL, categories: [FileCategory]? = nil, video: VideoQuality? = nil, scheduled: Bool = false, replaceExisting: Bool = false) -> UUID {
         if let existing = items.first(where: { $0.url == url && $0.video == video && $0.state != .completed }) {
             highlighted = existing.id
             return existing.id
         }
         var record = DownloadRecord(url: url, headers: headers, filename: filename.map(sanitizeFilename), directory: directory, categories: categories, video: video)
         record.scheduled = scheduled ? true : nil
+        record.replaceExisting = replaceExisting ? true : nil
         items.append(record)
         persist()
         schedule()
