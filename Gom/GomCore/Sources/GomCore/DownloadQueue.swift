@@ -27,7 +27,7 @@ public final class DownloadQueue {
     @ObservationIgnored private var windowOpen = false
     /// Downloads stopped because the window closed: they go back to queued, not paused.
     @ObservationIgnored private var requeueing: Set<UUID> = []
-    /// A scheduled download has started since the end action last fired.
+    /// A scheduled download has completed or failed since the end action last fired.
     @ObservationIgnored private var scheduledRunPending = false
 
     public init(
@@ -114,6 +114,10 @@ public final class DownloadQueue {
     public func refreshSchedule(now: Date = .now) {
         windowOpen = scheduleWindow?.contains(now) ?? false
         if !windowOpen {
+            // Work left for the next window: this run is not finished, so its end action is dropped.
+            if items.contains(where: { $0.scheduled == true && ($0.state == .queued || $0.state == .downloading) }) {
+                scheduledRunPending = false
+            }
             for record in items where record.scheduled == true { requeue(record.id) }
         }
         schedule()
@@ -122,9 +126,7 @@ public final class DownloadQueue {
     /// "Start in Schedule" / "Start Now". Scheduling a running download while the window is closed puts it back in the queue.
     public func setScheduled(_ id: UUID, _ scheduled: Bool) {
         update(id) { $0.scheduled = scheduled ? true : nil }
-        if scheduled && running[id] != nil {
-            if windowOpen { scheduledRunPending = true } else { requeue(id) }
-        }
+        if scheduled && !windowOpen { requeue(id) }
         persist()
         schedule()
     }
@@ -161,7 +163,6 @@ public final class DownloadQueue {
     }
 
     private func start(_ record: DownloadRecord) {
-        if record.scheduled == true { scheduledRunPending = true }
         update(record.id) { $0.state = .downloading }
         let id = record.id
         let streamer = streamer
@@ -210,7 +211,10 @@ public final class DownloadQueue {
         if requeued { result.state = .queued }   // the window closed: wait for it to open again
         if items.contains(where: { $0.id == id }) {
             update(id) { result.scheduled = $0.scheduled; $0 = result }
-            if result.state != .paused && !requeued { onFinished?(result) }
+            if result.state != .paused && !requeued {
+                onFinished?(result)
+                if result.scheduled == true { scheduledRunPending = true }   // pausing is not finishing
+            }
         } else if result.state != .completed, let temp = result.tempURL {
             try? FileManager.default.removeItem(at: temp)   // removed while running
         }
