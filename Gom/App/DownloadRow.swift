@@ -30,6 +30,9 @@ struct DownloadRow: View {
             if item.state == .completed, let url = item.fileURL { NSWorkspace.shared.open(url) }
         }
         .contextMenu {
+            if item.state == .completed, let url = item.fileURL {
+                Button("Open") { NSWorkspace.shared.open(url) }
+            }
             if item.state != .completed {
                 if item.scheduled == true {
                     Button("Start Now") {
@@ -99,6 +102,9 @@ struct DownloadRow: View {
             case .failed:
                 iconButton("arrow.clockwise", "Retry") { queue.resume(item.id) }
             case .completed:
+                iconButton("arrow.up.forward.app", "Open") {
+                    if let url = item.fileURL { NSWorkspace.shared.open(url) }
+                }
                 iconButton("folder", "Show in Finder") {
                     if let url = item.fileURL { NSWorkspace.shared.activateFileViewerSelecting([url]) }
                 }
