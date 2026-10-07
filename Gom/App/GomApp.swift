@@ -9,7 +9,7 @@ struct GomApp: App {
 
     var body: some Scene {
         Window("Gom", id: "main") {
-            ContentView(queue: appDelegate.queue)
+            ContentView(queue: appDelegate.queue, videoSetup: appDelegate.videoSetup)
         }
         MenuBarExtra {
             MenuBarView(queue: appDelegate.queue)
@@ -18,7 +18,7 @@ struct GomApp: App {
         }
         .menuBarExtraStyle(.window)
         Settings {
-            SettingsView(queue: appDelegate.queue)
+            SettingsView(queue: appDelegate.queue, videoSetup: appDelegate.videoSetup)
         }
     }
 }
@@ -26,6 +26,7 @@ struct GomApp: App {
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     let queue = DownloadQueue(store: .appSupport)
+    lazy var videoSetup = VideoSetup(queue: queue)
     private var server: BridgeServer?
 
     /// Set before launch finishes so a click on a notification that launched Gom is delivered.
@@ -39,6 +40,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         queue.onFinished = Self.notify
         queue.bandwidthLimit = max(0, AppSettings.speedLimitKB) * 1000
         startBridge()
+        Task { await videoSetup.refresh() }
     }
 
     /// Keep running with no window so the extension can still hand over downloads.
@@ -54,12 +56,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func startBridge() {
         let queue = queue
+        let videoSetup = videoSetup
         do {
             let server = try BridgeServer(port: UInt16(clamping: AppSettings.port), token: AppSettings.token) { add in
                 Task { @MainActor in
                     Self.showMainWindow()
-                    Self.chooseFolder(for: add) { directory in
-                        queue.add(url: add.url, headers: add.headers, filename: add.filename, directory: directory)
+                    if let video = add.video {
+                        // The menu item is the choice: no folder dialog. The file is sorted once yt-dlp names it.
+                        queue.add(url: add.url, headers: add.headers, directory: AppSettings.downloadDirectory,
+                                  categories: AppSettings.sortByType ? AppSettings.categories : nil, video: video)
+                        videoSetup.offerInstallIfNeeded()
+                    } else {
+                        Self.chooseFolder(for: add) { directory in
+                            queue.add(url: add.url, headers: add.headers, filename: add.filename, directory: directory)
+                        }
                     }
                 }
             }

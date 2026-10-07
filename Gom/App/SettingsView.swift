@@ -5,10 +5,12 @@ import UserNotifications
 
 struct SettingsView: View {
     let queue: DownloadQueue
+    let videoSetup: VideoSetup
     @AppStorage("downloadDirectory") private var directoryPath = ""
     @AppStorage("sortByType") private var sortByType = true
     @AppStorage("notifications") private var notifications = true
     @AppStorage("speedLimitKB") private var speedLimitKB = 0
+    @AppStorage("videoQuality") private var videoQuality = VideoQuality.best
     @AppStorage("port") private var port = AppSettings.defaultPort
     @AppStorage("token") private var token = ""
     @State private var categories = AppSettings.categories
@@ -82,6 +84,30 @@ struct SettingsView: View {
             }
             .disabled(!sortByType)
             Section {
+                Picker("Quality", selection: $videoQuality) {
+                    ForEach(VideoQuality.allCases, id: \.self) { Text($0.label) }
+                }
+                LabeledContent("yt-dlp") { toolStatus(videoSetup.tools.ytDlp, version: videoSetup.ytDlpVersion) }
+                LabeledContent("ffmpeg") { toolStatus(videoSetup.tools.ffmpeg, version: nil) }
+                if !videoSetup.tools.missing.isEmpty {
+                    HStack {
+                        Spacer()
+                        if videoSetup.installing {
+                            ProgressView().controlSize(.small)
+                            Text("Installing…").foregroundStyle(.secondary)
+                        } else {
+                            Button("Install") { videoSetup.offerInstallIfNeeded() }
+                        }
+                    }
+                }
+            } header: {
+                Text("Video")
+            } footer: {
+                Text("Links to YouTube, Vimeo and other video sites download with yt-dlp at this quality. In the browser, right-click a page and choose Download video with Gom.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Section {
                 TextField("Port", value: $port, format: .number.grouping(.never))
                 LabeledContent("Token") {
                     HStack {
@@ -115,6 +141,7 @@ struct SettingsView: View {
         }
         // Re-checked when the user comes back from System Settings.
         .task { await checkNotifications() }
+        .task { await videoSetup.refresh() }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             Task { await checkNotifications() }
         }
@@ -123,5 +150,12 @@ struct SettingsView: View {
 
     private func checkNotifications() async {
         notificationsDenied = await UNUserNotificationCenter.current().notificationSettings().authorizationStatus == .denied
+    }
+
+    private func toolStatus(_ url: URL?, version: String?) -> some View {
+        Text(url.map { [version, $0.deletingLastPathComponent().path(percentEncoded: false)].compactMap { $0 }.joined(separator: " – ") } ?? "Not installed")
+            .foregroundStyle(url == nil ? .red : .secondary)
+            .lineLimit(1)
+            .truncationMode(.middle)
     }
 }

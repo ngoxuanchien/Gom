@@ -3,6 +3,7 @@ import SwiftUI
 
 struct ContentView: View {
     let queue: DownloadQueue
+    let videoSetup: VideoSetup
     @State private var input = ""
 
     var body: some View {
@@ -63,6 +64,8 @@ struct ContentView: View {
     }
 
     private func add(_ url: URL) {
-        queue.add(url: url, directory: AppSettings.downloadDirectory, categories: AppSettings.sortByType ? AppSettings.categories : nil)
+        let video = isVideoPage(url) ? AppSettings.videoQuality : nil
+        queue.add(url: url, directory: AppSettings.downloadDirectory, categories: AppSettings.sortByType ? AppSettings.categories : nil, video: video)
+        if video != nil { videoSetup.offerInstallIfNeeded() }
     }
 }
