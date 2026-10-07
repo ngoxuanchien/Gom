@@ -631,34 +631,54 @@ In `GomApp.swift`, in `applicationDidFinishLaunching` after `queue.bandwidthLimi
         }
 ```
 
-New methods in `AppDelegate`, after `notify`:
+New property next to `server`:
+
+```swift
+    private var countdown: (alert: NSAlert, verb: String, deadline: Date)?
+```
+
+New methods in `AppDelegate`, after `notify`. (Revised after the manual run: a countdown `Task` never ticks while `runModal` holds the main actor, and calling `terminate` from inside a main-actor job deadlocks against `applicationShouldTerminate`'s reply task. So the alert runs from a run-loop callout, and a `.modalPanel` timer drives the countdown.)
 
 ```swift
     /// Counts down 60 s in an alert, then quits or sleeps the Mac unless the user cancels.
     private func scheduleFinished() {
         let action = AppSettings.scheduleAction
         guard action != .none else { return }
-        // Not inside the queue's callback: runModal blocks until the alert closes.
-        Task { @MainActor in
-            let verb = action == .quit ? "quit" : "put the Mac to sleep"
-            let alert = NSAlert()
-            alert.messageText = "Scheduled downloads finished"
-            alert.informativeText = "Gom will \(verb) in 60 seconds."
-            alert.addButton(withTitle: action == .quit ? "Quit Now" : "Sleep Now")
-            alert.addButton(withTitle: "Cancel")
-            let countdown = Task { @MainActor in
-                for left in stride(from: 59, through: 1, by: -1) {
-                    try await Task.sleep(for: .seconds(1))
-                    alert.informativeText = "Gom will \(verb) in \(left) seconds."
-                }
-                try await Task.sleep(for: .seconds(1))
-                NSApp.abortModal()   // unlike stopModal, works from outside the alert's own event handling
-            }
-            NSApp.activate(ignoringOtherApps: true)
-            let response = alert.runModal()
-            countdown.cancel()
-            guard response == .alertFirstButtonReturn || response == .abort else { return }
-            if action == .quit { NSApp.terminate(nil) } else { Self.sleepMac() }
+        // A run-loop callout, not a Task or main-queue block: inside those, runModal and terminate's
+        // wait for applicationShouldTerminate's reply would hold the main actor and deadlock.
+        RunLoop.main.perform(inModes: [.default]) { [weak self] in
+            MainActor.assumeIsolated { self?.showCountdown(action) }
+        }
+    }
+
+    private func showCountdown(_ action: ScheduleAction) {
+        let verb = action == .quit ? "quit" : "put the Mac to sleep"
+        let alert = NSAlert()
+        alert.messageText = "Scheduled downloads finished"
+        alert.informativeText = "Gom will \(verb) in 60 seconds."
+        alert.addButton(withTitle: action == .quit ? "Quit Now" : "Sleep Now")
+        alert.addButton(withTitle: "Cancel")
+        countdown = (alert, verb, .now + 60)
+        // A run-loop timer, not a Task: main-actor tasks don't run while runModal holds the main actor.
+        let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.tickCountdown() }
+        }
+        RunLoop.main.add(timer, forMode: .modalPanel)
+        NSApp.activate(ignoringOtherApps: true)
+        let response = alert.runModal()
+        timer.invalidate()
+        countdown = nil
+        guard response == .alertFirstButtonReturn || response == .abort else { return }
+        if action == .quit { NSApp.terminate(nil) } else { Self.sleepMac() }
+    }
+
+    private func tickCountdown() {
+        guard let countdown else { return }
+        let left = Int(countdown.deadline.timeIntervalSinceNow.rounded())
+        if left <= 0 {
+            NSApp.abortModal()   // unlike stopModal, works from a timer
+        } else {
+            countdown.alert.informativeText = "Gom will \(countdown.verb) in \(left) seconds."
         }
     }
 
@@ -780,7 +800,7 @@ In `addAll`, pass the flag:
 - [ ] **Step 6: Build**
 
 Run (from `Gom/`): `xcodegen generate && xcodebuild -project Gom.xcodeproj -scheme Gom -configuration Debug -derivedDataPath build build 2>&1 | tail -5`
-Expected: `** BUILD SUCCEEDED **` with no new warnings in the changed files. If Swift 6 complains about `alert` captured in the countdown `Task`, keep the alert and the countdown in the same `@MainActor` task as written. Don't add `@unchecked Sendable` wrappers.
+Expected: `** BUILD SUCCEEDED **` with no new warnings in the changed files. Don't add `@unchecked Sendable` wrappers; the timer closure captures only the `@MainActor` delegate.
 
 - [ ] **Step 7: Commit**
 
