@@ -92,3 +92,50 @@ echo "GOMFILE $dir/Test Clip [abc].mp4"
         #expect(FileManager.default.fileExists(atPath: record.tempURL!.appending(path: "Test Clip [abc].mp4.part").path(percentEncoded: false)))
     }
 }
+
+@MainActor
+@Suite struct VideoQueueTests {
+    func makeQueue(_ dir: URL) -> DownloadQueue {
+        DownloadQueue(store: DownloadStore(fileURL: dir.appending(path: "downloads.json")), streamer: MockServer.streamer(), retryDelay: { _ in .zero })
+    }
+
+    @Test func missingToolFailsThenRetriesAfterInstall() async throws {
+        let dir = try makeTempDir()
+        let queue = makeQueue(dir)
+        let id = queue.add(url: URL(string: "https://youtu.be/abc")!, directory: dir, video: .p720)
+        try await waitUntil { queue.items.first?.state == .failed("yt-dlp not installed") }
+
+        queue.videoTools = try fakeYtDlp(successScript)
+        queue.retryMissingTools()
+        try await waitUntil { queue.items.first?.state == .completed }
+        #expect(queue.items.first { $0.id == id }?.filename == "Test Clip [abc].mp4")
+    }
+
+    @Test func retryMissingToolsLeavesOtherFailuresAlone() async throws {
+        let dir = try makeTempDir()
+        let queue = makeQueue(dir)
+        queue.videoTools = try fakeYtDlp(#"echo "ERROR: Unsupported URL" >&2; exit 1"#)
+        queue.add(url: URL(string: "https://youtu.be/abc")!, directory: dir, video: .best)
+        try await waitUntil { queue.items.first?.state == .failed("Unsupported URL") }
+        queue.retryMissingTools()
+        #expect(queue.items.first?.state == .failed("Unsupported URL"))
+    }
+
+    @Test func removingVideoDeletesTempFolder() async throws {
+        let dir = try makeTempDir()
+        let queue = makeQueue(dir)
+        queue.videoTools = try fakeYtDlp("""
+        echo "GOM 10 100 NA NA"
+        exec sleep 30
+        """)
+        let id = queue.add(url: URL(string: "https://youtu.be/abc")!, directory: dir, video: .best)
+        let folder = queue.items[0].tempURL!
+        try await waitUntil { queue.items.first?.downloadedBytes == 10 }
+        #expect(FileManager.default.fileExists(atPath: folder.path(percentEncoded: false)))
+
+        queue.pause(id)
+        try await waitUntil { queue.items.first?.state == .paused }
+        queue.remove(id, deleteFile: false)
+        #expect(!FileManager.default.fileExists(atPath: folder.path(percentEncoded: false)))
+    }
+}
