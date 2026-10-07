@@ -6,6 +6,8 @@ public struct AddRequest: Codable, Equatable, Sendable {
     public var referrer: String?
     public var cookies: String?
     public var userAgent: String?
+    /// Set by the extension's "Download video with Gom" menu.
+    public var video: VideoQuality?
 
     /// Request headers to replay when downloading.
     public var headers: [String: String] {
