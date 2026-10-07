@@ -15,7 +15,8 @@
 - Menu bar item showing how many downloads are running and the total speed; its popover lists unfinished downloads with progress and has Pause All, Resume All, Open Gom and Quit.
 - macOS notifications when a download completes (click to reveal it in Finder) or fails; can be turned off in Settings.
 - Sorts downloads into subfolders by file type (Documents, Compressed, Music, Video, Programs, Images); folders and extensions are editable in Settings.
-- No external dependencies: Swift, SwiftUI and Network.framework only.
+- Downloads videos from YouTube, Vimeo and other sites with [yt-dlp](https://github.com/yt-dlp/yt-dlp) (Best / 1080p / 720p / Audio only): paste the link or right-click the page in Chrome. Gom finds an installed yt-dlp and ffmpeg, or offers to install them with Homebrew.
+- No external dependencies: Swift, SwiftUI and Network.framework only. Video downloads use yt-dlp and ffmpeg, installed on demand.
 
 ## Requirements
 
@@ -63,5 +64,5 @@ The extension talks to the app over `http://127.0.0.1:47615`, authenticated by a
 
 ## Roadmap
 
-- Phase 2: video downloads via `yt-dlp`.
+- ~~Phase 2: video downloads via `yt-dlp`.~~ Done.
 - Phase 3: scheduled downloads.
