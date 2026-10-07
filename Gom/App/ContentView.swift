@@ -10,6 +10,8 @@ struct ContentView: View {
     @SceneStorage("category") private var category = ""
     /// Read so the sidebar redraws when the folders are edited in Settings.
     @AppStorage("fileCategories") private var categoriesData: Data?
+    /// Days the user opened or closed; today starts open, older days closed.
+    @State private var toggledDays: Set<Date> = []
 
     private let otherGroup = "\u{1}other"   // can't collide: folder names are sanitized filenames
 
@@ -108,10 +110,32 @@ struct ContentView: View {
             .background(.quaternary.opacity(0.5), in: .rect(cornerRadius: 10))
             .padding()
             Divider()
-            List(visibleItems) { item in
-                DownloadRow(item: item, speed: queue.speeds[item.id], queue: queue)
-                    .listRowBackground(queue.highlighted == item.id ? Color.accentColor.opacity(0.15) : nil)
+            List {
+                ForEach(daySections(visibleItems), id: \.day) { section in
+                    Section(isExpanded: isExpanded(section.day)) {
+                        ForEach(section.items) { item in
+                            DownloadRow(item: item, speed: queue.speeds[item.id], queue: queue)
+                                .listRowBackground(queue.highlighted == item.id ? Color.accentColor.opacity(0.15) : nil)
+                        }
+                    } header: {
+                        // The plain list style draws no disclosure control of its own, so the header is the toggle.
+                        let expanded = isExpanded(section.day)
+                        Button {
+                            withAnimation { expanded.wrappedValue.toggle() }
+                        } label: {
+                            HStack {
+                                Image(systemName: "chevron.right")
+                                    .rotationEffect(.degrees(expanded.wrappedValue ? 90 : 0))
+                                Text(dayTitle(section.day))
+                                Text("\(section.items.count)").foregroundStyle(.secondary)
+                            }
+                            .contentShape(.rect)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
             }
+            .listStyle(.plain)
             .overlay {
                 if queue.items.isEmpty {
                     ContentUnavailableView(
@@ -129,6 +153,21 @@ struct ContentView: View {
                 return !valid.isEmpty
             }
         }
+    }
+
+    private func isExpanded(_ day: Date) -> Binding<Bool> {
+        let open = Calendar.current.isDateInToday(day)
+        return Binding {
+            open != toggledDays.contains(day)
+        } set: { expanded in
+            if expanded == open { toggledDays.remove(day) } else { toggledDays.insert(day) }
+        }
+    }
+
+    private func dayTitle(_ day: Date) -> String {
+        if Calendar.current.isDateInToday(day) { return "Today" }
+        if Calendar.current.isDateInYesterday(day) { return "Yesterday" }
+        return day.formatted(date: .abbreviated, time: .omitted)
     }
 
     private func addLinks() {

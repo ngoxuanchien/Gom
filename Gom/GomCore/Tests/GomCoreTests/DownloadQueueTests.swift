@@ -54,6 +54,7 @@ import Testing
         let saved = try String(contentsOf: dir.appending(path: "downloads.json"), encoding: .utf8)
         #expect(!saved.contains("secret"))
         #expect(finished.map(\.state) == [.completed])
+        #expect(queue.items.first?.completedAt != nil)
     }
 
     @Test func failureCallsOnFinishedButPauseDoesNot() async throws {

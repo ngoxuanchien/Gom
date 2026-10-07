@@ -214,6 +214,7 @@ public final class DownloadQueue {
         var result = result
         let requeued = requeueing.remove(id) != nil && result.state == .paused
         if requeued { result.state = .queued }   // the window closed: wait for it to open again
+        if result.state == .completed { result.completedAt = .now }
         if items.contains(where: { $0.id == id }) {
             update(id) { result.scheduled = $0.scheduled; $0 = result }
             if result.state != .paused && !requeued {

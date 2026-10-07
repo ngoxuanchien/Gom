@@ -26,6 +26,7 @@
 - Sorts downloads into subfolders by file type (Documents, Compressed, Music, Video, Programs, Images); folders and extensions are editable in Settings.
 - A sidebar filters the download list by the same file types.
 - The download list shows the newest first; open a finished file with its Open button, right-click → Open, or a double-click.
+- The list is grouped by the day each download finished. Today is open; older days are collapsed until you click their header. Unfinished downloads always stay under Today.
 
 ### Video
 
