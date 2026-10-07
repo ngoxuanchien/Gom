@@ -4,6 +4,8 @@
 
 <p align="center">A small, fast download manager for macOS, with a browser extension that hands your downloads to it.</p>
 
+<p align="center"><img src="docs/screenshot.png" width="800" alt="Gom window with the folder sidebar and a list of downloads"></p>
+
 ## Features
 
 ### Downloading
