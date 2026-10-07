@@ -32,7 +32,10 @@ struct DownloadRow: View {
         .contextMenu {
             if item.state != .completed {
                 if item.scheduled == true {
-                    Button("Start Now") { queue.setScheduled(item.id, false) }
+                    Button("Start Now") {
+                        queue.setScheduled(item.id, false)
+                        queue.resume(item.id)   // a paused or failed one starts too
+                    }
                 } else {
                     Button("Start in Schedule") { queue.setScheduled(item.id, true) }
                 }

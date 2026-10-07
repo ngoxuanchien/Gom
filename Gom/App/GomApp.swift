@@ -44,9 +44,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         queue.scheduleWindow = AppSettings.scheduleWindow
         queue.refreshSchedule()
         // ponytail: polls every 30 s, so the window opens and closes up to 30 s late; exact timers would need DST/wake handling.
-        _ = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [queue] _ in
+        // Common modes: keeps polling while an alert (e.g. the video-tool offer) waits overnight.
+        RunLoop.main.add(Timer(timeInterval: 30, repeats: true) { [queue] _ in
             MainActor.assumeIsolated { queue.refreshSchedule() }
-        }
+        }, forMode: .common)
         NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [queue] _ in
             MainActor.assumeIsolated { queue.refreshSchedule() }
         }
@@ -127,6 +128,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func showCountdown(_ action: ScheduleAction) {
+        guard countdown == nil else { return }   // one countdown at a time
         let verb = action == .quit ? "quit" : "put the Mac to sleep"
         let alert = NSAlert()
         alert.messageText = "Scheduled downloads finished"
