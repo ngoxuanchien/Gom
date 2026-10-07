@@ -51,6 +51,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [queue] _ in
             MainActor.assumeIsolated { queue.refreshSchedule() }
         }
+        // No Dock icon while the main window is closed; Gom stays in the menu bar until a download brings it back.
+        for (name, policy) in [(NSWindow.willCloseNotification, NSApplication.ActivationPolicy.accessory),
+                               (NSWindow.didBecomeKeyNotification, .regular)] {
+            NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { note in
+                let window = note.object as? NSWindow
+                MainActor.assumeIsolated {
+                    guard window?.identifier?.rawValue.hasPrefix("main") == true else { return }
+                    NSApp.setActivationPolicy(policy)
+                }
+            }
+        }
         startBridge()
         Task { await videoSetup.refresh() }
     }
@@ -181,6 +192,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     static func showMainWindow() {
+        // Here too, not only on didBecomeKey: the save panel takes key first, so the window may never become key.
+        NSApp.setActivationPolicy(.regular)
         // Plain activate() is cooperative and the browser in front won't yield, so force it.
         NSApp.activate(ignoringOtherApps: true)
         if let window = NSApp.windows.first(where: { $0.identifier?.rawValue.hasPrefix("main") == true }) {

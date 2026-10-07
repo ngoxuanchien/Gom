@@ -34,6 +34,7 @@
 ### Menu bar and notifications
 
 - Menu bar item showing how many downloads are running and the total speed; its popover lists unfinished downloads with progress and has Pause All, Resume All, Open Gom and Quit.
+- Closing the main window hides Gom from the Dock; it keeps running in the menu bar and comes back when the browser hands over a download.
 - macOS notifications when a download completes (click to reveal it in Finder) or fails; can be turned off in Settings.
 - Open at login (Settings → General), so the menu bar item and browser hand-offs are ready after a restart.
 
