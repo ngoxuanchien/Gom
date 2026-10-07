@@ -20,7 +20,7 @@ Gom must be running and the Mac awake for the window to take effect.
 ### `ScheduleWindow` (GomCore, new file `Schedule.swift`)
 
 ```swift
-public struct ScheduleWindow: Codable, Equatable, Sendable {
+public struct ScheduleWindow: Equatable, Sendable {
     public var start: Int   // minutes since midnight, 0..<1440
     public var end: Int
     public func contains(_ date: Date, calendar: Calendar = .current) -> Bool
@@ -32,9 +32,11 @@ public struct ScheduleWindow: Codable, Equatable, Sendable {
 - `start == end`: open all day.
 - `t` is the local wall-clock minute of `date` in `calendar` (hour * 60 + minute), so DST and clock changes are handled by re-evaluating, not by computing instants.
 
-### `DownloadRecord.scheduled: Bool`
+### `DownloadRecord.scheduled: Bool?`
 
-New stored property, default `false`. Decoded with `decodeIfPresent`, so `downloads.json` files written before phase 3 still load. Persisted through `DownloadStore` with the rest of the record. It stays set after the download completes (harmless) and is cleared by "Start Now".
+New stored property: `true` = scheduled, `nil` = not (never `false`). Optional like `video` and `categories`, so synthesized `Codable` loads `downloads.json` files written before phase 3 and writes no key for unscheduled records. Persisted through `DownloadStore` with the rest of the record. It stays set after the download completes (harmless) and is cleared by "Start Now".
+
+The engine works on a copy of the record taken at start, so when its progress and result are written back the queue keeps the record's current `scheduled` value; a toggle made while the download runs is not lost.
 
 ### Settings (`UserDefaults`, via `AppSettings`)
 
@@ -65,6 +67,7 @@ public func add(..., scheduled: Bool = false) -> UUID
   - Never fires while any download (scheduled or not) is still running.
   - Does not fire when the window closes with work left: those records are back to `queued`.
   - Scheduled downloads the user paused by hand don't block it.
+  - Never fires during `shutdown()` (app quit).
 
 ## 4. App
 
@@ -79,7 +82,7 @@ public func add(..., scheduled: Bool = false) -> UUID
 
 - `pmset` failing (non-zero exit or launch error) is logged; the app stays up.
 - A window with `start == end` is valid (all day), so the pickers can't produce an invalid value.
-- Decoding an old store without `scheduled` gives `false`.
+- Decoding an old store without `scheduled` gives `nil` (not scheduled).
 
 ## 6. Testing
 
@@ -91,6 +94,6 @@ GomCore, `ScheduleTests.swift` (Swift Testing, like the rest):
   - closing the window moves a running scheduled download back to `queued` with its progress kept, and leaves unscheduled downloads running;
   - `onScheduleFinished` fires exactly once after the last scheduled download completes, not while an unscheduled download is still running, and not when the window closes with work left;
   - `setScheduled(id, false)` starts a waiting download outside the window;
-  - `scheduled` survives a save/load round trip, and a record JSON without the key decodes as `false`.
+  - `scheduled` survives a save/load round trip, and a relaunched queue without a window set does not start it.
 
 Manual: a window a few minutes ahead with the debug build. The download waits, starts at the window start, pauses at the window end, and the countdown alert appears when it is done; "Cancel" leaves Gom running.
