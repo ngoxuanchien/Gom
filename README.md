@@ -35,6 +35,7 @@
 
 - Menu bar item showing how many downloads are running and the total speed; its popover lists unfinished downloads with progress and has Pause All, Resume All, Open Gom and Quit.
 - macOS notifications when a download completes (click to reveal it in Finder) or fails; can be turned off in Settings.
+- Open at login (Settings → General), so the menu bar item and browser hand-offs are ready after a restart.
 
 No external dependencies: Swift, SwiftUI and Network.framework only. Video downloads use yt-dlp and ffmpeg, installed on demand.
 
