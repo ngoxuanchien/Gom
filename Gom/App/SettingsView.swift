@@ -1,5 +1,6 @@
 import AppKit
 import GomCore
+import ServiceManagement
 import SwiftUI
 import UserNotifications
 
@@ -19,9 +20,21 @@ struct SettingsView: View {
     @State private var categories = AppSettings.categories
     @State private var choosingFolder = false
     @State private var notificationsDenied = false
+    @State private var loginItemStatus = SMAppService.mainApp.status
 
     var body: some View {
         Form {
+            Section {
+                Toggle("Open at login", isOn: Binding(get: { loginItemStatus == .enabled }, set: setOpenAtLogin))
+                if loginItemStatus == .requiresApproval {
+                    LabeledContent("Gom needs approval in Login Items.") {
+                        Button("Open System Settings") { SMAppService.openSystemSettingsLoginItems() }
+                    }
+                    .foregroundStyle(.secondary)
+                }
+            } header: {
+                Text("General")
+            }
             Section {
                 LabeledContent("Save to") {
                     HStack {
@@ -163,12 +176,22 @@ struct SettingsView: View {
         .task { await videoSetup.refresh() }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             Task { await checkNotifications() }
+            loginItemStatus = SMAppService.mainApp.status
         }
         .frame(width: 560)
     }
 
     private func checkNotifications() async {
         notificationsDenied = await UNUserNotificationCenter.current().notificationSettings().authorizationStatus == .denied
+    }
+
+    private func setOpenAtLogin(_ on: Bool) {
+        do {
+            if on { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() }
+        } catch {
+            NSAlert(error: error).runModal()
+        }
+        loginItemStatus = SMAppService.mainApp.status
     }
 
     private func applySchedule() {
