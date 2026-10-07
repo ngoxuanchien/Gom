@@ -7,6 +7,10 @@
 3. Open the extension's **Options**, paste the token from Gom → Settings → Copy, click **Save**, then **Test connection**.
 4. After editing any file here, click the reload icon on the extension's card in `chrome://extensions`.
 
+## Videos
+
+Right-click a video page (or a link to one) → **Download video with Gom** → Best / 1080p / 720p / Audio only. Gom downloads it with yt-dlp straight into the Video (or Music) folder, and offers to install yt-dlp and ffmpeg with Homebrew if they're missing. Login-only videos aren't supported: cookies aren't passed to yt-dlp.
+
 ## Known limitations
 
 - Downloads produced by submitting a form (POST) stay in Chrome, because Gom can only re-request with GET. A form that redirects to a GET download (POST → 303) still goes to Gom.
@@ -27,3 +31,5 @@
   h.HTTPServer(("127.0.0.1",8765),H).serve_forever()'
   ```
 - [ ] Put a wrong token in Options → **Test connection** reports an error.
+- [ ] Right-click a YouTube page → Download video with Gom → 720p → it appears in Gom with progress and lands in Video.
+- [ ] Quit Gom, use the menu again → the toolbar icon shows "!" for a few seconds.

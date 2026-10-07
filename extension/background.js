@@ -13,22 +13,15 @@ async function cookieHeader(url) {
   return cookies.map((c) => `${c.name}=${c.value}`).join("; ");
 }
 
-// Resolves true only if Gom accepted the download within 2 seconds.
-async function sendToGom(item, settings) {
-  const url = item.finalUrl || item.url;
+// Resolves true only if Gom accepted the request within 2 seconds.
+async function postToGom(body, settings) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 2000);
   try {
     const res = await fetch(`http://127.0.0.1:${settings.port}/add`, {
       method: "POST",
       headers: { "Content-Type": "application/json", "X-Gom-Token": settings.token },
-      body: JSON.stringify({
-        url,
-        filename: item.filename ? item.filename.split(/[\\/]/).pop() : undefined,
-        referrer: item.referrer || undefined,
-        cookies: await cookieHeader(url),
-        userAgent: navigator.userAgent,
-      }),
+      body: JSON.stringify(body),
       signal: controller.signal,
     });
     return res.ok;
@@ -37,6 +30,20 @@ async function sendToGom(item, settings) {
   } finally {
     clearTimeout(timer);
   }
+}
+
+async function sendToGom(item, settings) {
+  const url = item.finalUrl || item.url;
+  return postToGom(
+    {
+      url,
+      filename: item.filename ? item.filename.split(/[\\/]/).pop() : undefined,
+      referrer: item.referrer || undefined,
+      cookies: await cookieHeader(url),
+      userAgent: navigator.userAgent,
+    },
+    settings
+  );
 }
 
 // Resolves true if Gom took the download and Chrome's copy was cancelled.
@@ -63,4 +70,30 @@ chrome.downloads.onDeterminingFilename.addListener((item, suggest) => {
       if (!handedOff) suggest();
     });
   return true; // suggest() is called asynchronously
+});
+
+const VIDEO_QUALITIES = { best: "Best", "1080p": "1080p", "720p": "720p", audio: "Audio only" };
+
+chrome.runtime.onInstalled.addListener(() => {
+  chrome.contextMenus.create({ id: "gom-video", title: "Download video with Gom", contexts: ["page", "link"] });
+  for (const [quality, title] of Object.entries(VIDEO_QUALITIES)) {
+    chrome.contextMenus.create({ id: `gom-video:${quality}`, parentId: "gom-video", title, contexts: ["page", "link"] });
+  }
+});
+
+// No cookies: Gom doesn't pass them to yt-dlp (login-only videos are out of scope).
+chrome.contextMenus.onClicked.addListener(async (info, tab) => {
+  const id = String(info.menuItemId);
+  if (!id.startsWith("gom-video:")) return;
+  const settings = await chrome.storage.local.get(DEFAULTS);
+  const url = info.linkUrl || info.pageUrl;
+  const ok =
+    settings.token &&
+    /^https?:/i.test(url) &&
+    (await postToGom({ url, referrer: info.pageUrl, userAgent: navigator.userAgent, video: id.slice("gom-video:".length) }, settings));
+  if (!ok) {
+    // Gom isn't running or the token is wrong: flag it on the toolbar icon for a few seconds.
+    chrome.action.setBadgeText({ text: "!", tabId: tab?.id });
+    setTimeout(() => chrome.action.setBadgeText({ text: "", tabId: tab?.id }), 4000);
+  }
 });
