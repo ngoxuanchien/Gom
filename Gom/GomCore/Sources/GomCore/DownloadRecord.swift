@@ -15,6 +15,8 @@ public struct DownloadRecord: Codable, Identifiable, Equatable, Sendable {
     public var categories: [FileCategory]?
     /// Set for video pages downloaded with yt-dlp; nil for plain files.
     public var video: VideoQuality?
+    /// True when the download only runs inside the schedule window; nil otherwise (never false).
+    public var scheduled: Bool?
     public var totalBytes: Int64?
     public var etag: String?
     public var resumable: Bool

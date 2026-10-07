@@ -9,8 +9,12 @@ public final class DownloadQueue {
     public var highlighted: UUID?
     /// Called when a download ends completed or failed; not on pause, removal or shutdown.
     @ObservationIgnored public var onFinished: ((DownloadRecord) -> Void)?
+    /// Called once all scheduled downloads that ran are completed or failed and nothing else is downloading.
+    @ObservationIgnored public var onScheduleFinished: (() -> Void)?
     /// Where yt-dlp, ffmpeg and deno are. Set by the app at launch and after installing them.
     @ObservationIgnored public var videoTools: VideoTools
+    /// Daily window scheduled downloads run in; nil = they never start. Set by the app, then call `refreshSchedule()`.
+    @ObservationIgnored public var scheduleWindow: ScheduleWindow?
 
     let store: DownloadStore
     let streamer: HTTPStreamer
@@ -20,6 +24,11 @@ public final class DownloadQueue {
     @ObservationIgnored private var lastSave = ContinuousClock.now
     @ObservationIgnored private var lastSample: [UUID: (bytes: Int64, at: ContinuousClock.Instant)] = [:]
     @ObservationIgnored private var shuttingDown = false
+    @ObservationIgnored private var windowOpen = false
+    /// Downloads stopped because the window closed: they go back to queued, not paused.
+    @ObservationIgnored private var requeueing: Set<UUID> = []
+    /// A scheduled download has completed or failed since the end action last fired.
+    @ObservationIgnored private var scheduledRunPending = false
 
     public init(
         store: DownloadStore,
@@ -51,12 +60,13 @@ public final class DownloadQueue {
     }
 
     @discardableResult
-    public func add(url: URL, headers: [String: String] = [:], filename: String? = nil, directory: URL, categories: [FileCategory]? = nil, video: VideoQuality? = nil) -> UUID {
+    public func add(url: URL, headers: [String: String] = [:], filename: String? = nil, directory: URL, categories: [FileCategory]? = nil, video: VideoQuality? = nil, scheduled: Bool = false) -> UUID {
         if let existing = items.first(where: { $0.url == url && $0.video == video && $0.state != .completed }) {
             highlighted = existing.id
             return existing.id
         }
-        let record = DownloadRecord(url: url, headers: headers, filename: filename.map(sanitizeFilename), directory: directory, categories: categories, video: video)
+        var record = DownloadRecord(url: url, headers: headers, filename: filename.map(sanitizeFilename), directory: directory, categories: categories, video: video)
+        record.scheduled = scheduled ? true : nil
         items.append(record)
         persist()
         schedule()
@@ -100,6 +110,27 @@ public final class DownloadQueue {
         for record in items where record.state == .paused { resume(record.id) }
     }
 
+    /// Re-checks the window at `now`: starts scheduled downloads while it is open, moves running ones back to queued when it is closed.
+    public func refreshSchedule(now: Date = .now) {
+        windowOpen = scheduleWindow?.contains(now) ?? false
+        if !windowOpen {
+            // Work left for the next window: this run is not finished, so its end action is dropped.
+            if items.contains(where: { $0.scheduled == true && ($0.state == .queued || $0.state == .downloading) }) {
+                scheduledRunPending = false
+            }
+            for record in items where record.scheduled == true { requeue(record.id) }
+        }
+        schedule()
+    }
+
+    /// "Start in Schedule" / "Start Now". Scheduling a running download while the window is closed puts it back in the queue.
+    public func setScheduled(_ id: UUID, _ scheduled: Bool) {
+        update(id) { $0.scheduled = scheduled ? true : nil }
+        if scheduled && !windowOpen { requeue(id) }
+        persist()
+        schedule()
+    }
+
     /// Unfinished downloads always lose their temp file; `deleteFile` also deletes a finished file.
     public func remove(_ id: UUID, deleteFile: Bool) {
         guard let record = items.first(where: { $0.id == id }) else { return }
@@ -126,7 +157,7 @@ public final class DownloadQueue {
 
     private func schedule() {
         guard !shuttingDown else { return }
-        for record in items where record.state == .queued && running.count < maxConcurrent {
+        for record in items where record.state == .queued && (record.scheduled != true || windowOpen) && running.count < maxConcurrent {
             start(record)
         }
     }
@@ -150,6 +181,13 @@ public final class DownloadQueue {
         }
     }
 
+    /// Stops a running download; finished() puts it back to queued with its progress.
+    private func requeue(_ id: UUID) {
+        guard let task = running[id] else { return }
+        requeueing.insert(id)
+        task.cancel()
+    }
+
     private func progress(_ record: DownloadRecord) {
         // Progress can arrive after the download already finished or was paused; ignore it then.
         guard running[record.id] != nil, items.first(where: { $0.id == record.id })?.state == .downloading else { return }
@@ -159,7 +197,8 @@ public final class DownloadQueue {
             if seconds > 0 { speeds[record.id] = Double(record.downloadedBytes - last.bytes) / seconds }
         }
         lastSample[record.id] = (record.downloadedBytes, now)
-        update(record.id) { $0 = record }
+        // The engine's copy predates any schedule toggle made since the start.
+        update(record.id) { var record = record; record.scheduled = $0.scheduled; $0 = record }
         if now - lastSave >= .seconds(2) { persist() }
     }
 
@@ -167,14 +206,29 @@ public final class DownloadQueue {
         running[id] = nil
         speeds[id] = nil
         lastSample[id] = nil
+        var result = result
+        let requeued = requeueing.remove(id) != nil && result.state == .paused
+        if requeued { result.state = .queued }   // the window closed: wait for it to open again
         if items.contains(where: { $0.id == id }) {
-            update(id) { $0 = result }
-            if result.state != .paused { onFinished?(result) }
+            update(id) { result.scheduled = $0.scheduled; $0 = result }
+            if result.state != .paused && !requeued {
+                onFinished?(result)
+                if result.scheduled == true { scheduledRunPending = true }   // pausing is not finishing
+            }
         } else if result.state != .completed, let temp = result.tempURL {
             try? FileManager.default.removeItem(at: temp)   // removed while running
         }
         persist()
         schedule()
+        checkScheduleFinished()
+    }
+
+    /// Scheduled downloads paused by hand don't count as pending; ones requeued at window close do.
+    private func checkScheduleFinished() {
+        guard scheduledRunPending, !shuttingDown, running.isEmpty,
+              !items.contains(where: { $0.scheduled == true && ($0.state == .queued || $0.state == .downloading) }) else { return }
+        scheduledRunPending = false
+        onScheduleFinished?()
     }
 
     private func update(_ id: UUID, _ change: (inout DownloadRecord) -> Void) {

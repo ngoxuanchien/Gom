@@ -22,6 +22,14 @@ enum AppSettings {
     static var videoQuality: VideoQuality {
         defaults.string(forKey: "videoQuality").flatMap(VideoQuality.init(rawValue:)) ?? .best
     }
+    /// Daily window for scheduled downloads, in minutes since midnight; 01:00–06:00 by default.
+    static var scheduleWindow: ScheduleWindow {
+        ScheduleWindow(start: defaults.object(forKey: "scheduleStart") as? Int ?? 60,
+                       end: defaults.object(forKey: "scheduleEnd") as? Int ?? 360)
+    }
+    static var scheduleAction: ScheduleAction {
+        defaults.string(forKey: "scheduleAction").flatMap(ScheduleAction.init(rawValue:)) ?? .none
+    }
 
     /// Edited in SettingsView; stored as JSON.
     static var categories: [FileCategory] {
@@ -37,5 +45,18 @@ enum AppSettings {
 
     static func ensureToken() {
         if token.isEmpty { defaults.set(generateToken(), forKey: "token") }
+    }
+}
+
+/// What Gom does once scheduled downloads finish.
+enum ScheduleAction: String, CaseIterable {
+    case none, quit, sleep
+
+    var label: String {
+        switch self {
+        case .none: "Do Nothing"
+        case .quit: "Quit Gom"
+        case .sleep: "Sleep Mac"
+        }
     }
 }

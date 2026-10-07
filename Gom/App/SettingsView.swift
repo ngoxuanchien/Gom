@@ -10,6 +10,9 @@ struct SettingsView: View {
     @AppStorage("sortByType") private var sortByType = true
     @AppStorage("notifications") private var notifications = true
     @AppStorage("speedLimitKB") private var speedLimitKB = 0
+    @AppStorage("scheduleStart") private var scheduleStart = 60
+    @AppStorage("scheduleEnd") private var scheduleEnd = 360
+    @AppStorage("scheduleAction") private var scheduleAction = ScheduleAction.none
     @AppStorage("videoQuality") private var videoQuality = VideoQuality.best
     @AppStorage("port") private var port = AppSettings.defaultPort
     @AppStorage("token") private var token = ""
@@ -84,6 +87,19 @@ struct SettingsView: View {
             }
             .disabled(!sortByType)
             Section {
+                DatePicker("Start at", selection: time($scheduleStart), displayedComponents: .hourAndMinute)
+                DatePicker("Pause at", selection: time($scheduleEnd), displayedComponents: .hourAndMinute)
+                Picker("When scheduled downloads finish", selection: $scheduleAction) {
+                    ForEach(ScheduleAction.allCases, id: \.self) { Text($0.label) }
+                }
+            } header: {
+                Text("Schedule")
+            } footer: {
+                Text("Scheduled downloads only run between these times and pause outside them. Right-click a download and choose Start in Schedule, or turn on Schedule before adding links. Gom must be running and the Mac awake.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Section {
                 Picker("Quality", selection: $videoQuality) {
                     ForEach(VideoQuality.allCases, id: \.self) { Text($0.label) }
                 }
@@ -136,6 +152,8 @@ struct SettingsView: View {
             if case .success(let url) = result { directoryPath = url.path(percentEncoded: false) }
         }
         .onChange(of: categories) { AppSettings.categories = $1 }
+        .onChange(of: scheduleStart) { applySchedule() }
+        .onChange(of: scheduleEnd) { applySchedule() }
         .onChange(of: speedLimitKB) {
             if $1 < 0 { speedLimitKB = 0 }
             queue.bandwidthLimit = max(0, $1) * 1000
@@ -151,6 +169,22 @@ struct SettingsView: View {
 
     private func checkNotifications() async {
         notificationsDenied = await UNUserNotificationCenter.current().notificationSettings().authorizationStatus == .denied
+    }
+
+    private func applySchedule() {
+        queue.scheduleWindow = AppSettings.scheduleWindow
+        queue.refreshSchedule()
+    }
+
+    /// Edits minutes-since-midnight with a time picker.
+    private func time(_ minutes: Binding<Int>) -> Binding<Date> {
+        Binding(
+            get: { Calendar.current.date(bySettingHour: minutes.wrappedValue / 60, minute: minutes.wrappedValue % 60, second: 0, of: .now) ?? .now },
+            set: {
+                let time = Calendar.current.dateComponents([.hour, .minute], from: $0)
+                minutes.wrappedValue = (time.hour ?? 0) * 60 + (time.minute ?? 0)
+            }
+        )
     }
 
     private func toolStatus(_ url: URL?, version: String?) -> some View {

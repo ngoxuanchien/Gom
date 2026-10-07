@@ -9,6 +9,7 @@
 - Download queue with a concurrency limit; state survives app restarts.
 - Multi-connection HTTP downloads (8 segments) with pause/resume and automatic retry.
 - Optional speed limit (Settings → Speed limit, in KB/s; 0 = unlimited) that caps all downloads together and applies to running downloads immediately.
+- Scheduled downloads: mark downloads (right-click → Start in Schedule, or the Schedule toggle when adding) to run only in a daily window (Settings → Schedule, e.g. 01:00–06:00). They pause when the window closes and continue the next time it opens. Optionally quit Gom or put the Mac to sleep once they finish, after a 60-second countdown you can cancel.
 - Add downloads by pasting a URL or dragging a link into the window.
 - Chrome / Arc / Brave / Edge extension that intercepts downloads (optionally only above a size threshold) and sends them to Gom, with cookies and Referer so logged-in downloads work. If Gom is not running, the browser downloads the file itself.
 - Downloads from the browser bring Gom to the front and ask which folder to save into.
@@ -65,4 +66,4 @@ The extension talks to the app over `http://127.0.0.1:47615`, authenticated by a
 ## Roadmap
 
 - ~~Phase 2: video downloads via `yt-dlp`.~~ Done.
-- Phase 3: scheduled downloads.
+- ~~Phase 3: scheduled downloads.~~ Done.

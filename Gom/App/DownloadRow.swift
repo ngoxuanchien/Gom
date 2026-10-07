@@ -30,6 +30,16 @@ struct DownloadRow: View {
             if item.state == .completed, let url = item.fileURL { NSWorkspace.shared.open(url) }
         }
         .contextMenu {
+            if item.state != .completed {
+                if item.scheduled == true {
+                    Button("Start Now") {
+                        queue.setScheduled(item.id, false)
+                        queue.resume(item.id)   // a paused or failed one starts too
+                    }
+                } else {
+                    Button("Start in Schedule") { queue.setScheduled(item.id, true) }
+                }
+            }
             Button("Remove from List") { queue.remove(item.id, deleteFile: false) }
             if item.state == .completed {
                 Button("Remove and Delete File", role: .destructive) { queue.remove(item.id, deleteFile: true) }
@@ -58,7 +68,13 @@ struct DownloadRow: View {
     private var detail: String {
         var parts: [String] = []
         switch item.state {
-        case .queued: parts.append("Queued")
+        case .queued:
+            if item.scheduled == true {
+                let start = AppSettings.scheduleWindow.start
+                parts.append("Scheduled · starts \(String(format: "%02d:%02d", start / 60, start % 60))")
+            } else {
+                parts.append("Queued")
+            }
         case .paused: parts.append("Paused")
         default: break
         }
