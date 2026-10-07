@@ -93,6 +93,18 @@ echo "GOMFILE $dir/Test Clip [abc].mp4"
     }
 }
 
+@Suite struct VideoKillTests {
+    @Test func killsYtDlpThatIgnoresSIGINT() async throws {
+        let tools = try fakeYtDlp(#"trap '' INT; echo "GOM 10 100 NA NA"; while :; do sleep 0.2; done"#)
+        let started = Locked(false)
+        let record = DownloadRecord(url: URL(string: "https://youtu.be/abc")!, directory: try makeTempDir(), video: .best)
+        let task = Task { await runVideoDownload(record, tools: tools) { _ in started.mutate { $0 = true } } }
+        while !started.value { try await Task.sleep(for: .milliseconds(20)) }
+        task.cancel()
+        #expect(await task.value.state == .paused)
+    }
+}
+
 @MainActor
 @Suite struct VideoQueueTests {
     func makeQueue(_ dir: URL) -> DownloadQueue {
@@ -119,6 +131,24 @@ echo "GOMFILE $dir/Test Clip [abc].mp4"
         try await waitUntil { queue.items.first?.state == .failed("Unsupported URL") }
         queue.retryMissingTools()
         #expect(queue.items.first?.state == .failed("Unsupported URL"))
+    }
+
+    @Test func persistedVideoRunsWithToolsGivenToInit() async throws {
+        let dir = try makeTempDir()
+        let store = DownloadStore(fileURL: dir.appending(path: "downloads.json"))
+        try store.save([DownloadRecord(url: URL(string: "https://youtu.be/abc")!, directory: dir, video: .best)])
+        let queue = DownloadQueue(store: store, streamer: MockServer.streamer(), retryDelay: { _ in .zero }, videoTools: try fakeYtDlp(successScript))
+        try await waitUntil { queue.items.first?.state == .completed }
+    }
+
+    @Test func sameURLWithDifferentQualityIsNotADuplicate() throws {
+        let dir = try makeTempDir()
+        let queue = makeQueue(dir)
+        let url = URL(string: "https://youtu.be/abc")!
+        let a = queue.add(url: url, directory: dir, video: .best)
+        let b = queue.add(url: url, directory: dir, video: .audio)
+        #expect(a != b)
+        #expect(queue.items.count == 2)
     }
 
     @Test func removingVideoDeletesTempFolder() async throws {

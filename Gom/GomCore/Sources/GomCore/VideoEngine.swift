@@ -35,7 +35,7 @@ public func runVideoDownload(
     let latest = Locked(r)
     do {
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        let file = try await runYtDlp(ytDlp, arguments) { event in
+        let file = try await runYtDlp(ytDlp, arguments, path: tools.processPATH) { event in
             let snapshot: DownloadRecord? = latest.mutate { current in
                 switch event {
                 case .title(let title):
@@ -65,13 +65,13 @@ public func runVideoDownload(
 
 /// Runs yt-dlp and passes each understood stdout line to `onEvent`, with bytes accumulated across streams.
 /// Returns the finished file's path (the `GOMFILE` line).
-private func runYtDlp(_ executable: URL, _ arguments: [String], onEvent: @escaping @Sendable (YtDlpEvent) -> Void) async throws -> String {
+private func runYtDlp(_ executable: URL, _ arguments: [String], path: String, onEvent: @escaping @Sendable (YtDlpEvent) -> Void) async throws -> String {
     let process = Process()
     process.executableURL = executable
     process.arguments = arguments
     process.standardInput = FileHandle.nullDevice
     // Python block-buffers stdout when it's a pipe, which would make progress arrive in bursts.
-    process.environment = ProcessInfo.processInfo.environment.merging(["PYTHONUNBUFFERED": "1"]) { $1 }
+    process.environment = ProcessInfo.processInfo.environment.merging(["PYTHONUNBUFFERED": "1", "PATH": path]) { $1 }
     let stdout = Pipe(), stderr = Pipe()
     process.standardOutput = stdout
     process.standardError = stderr
@@ -81,6 +81,7 @@ private func runYtDlp(_ executable: URL, _ arguments: [String], onEvent: @escapi
     // Launch before installing the cancel handler: interrupt() on an unlaunched Process raises.
     try process.run()
     // ponytail: SIGINT reaches yt-dlp only; an ffmpeg merge it started may run to the end. Signal the process group if that shows up.
+    // A yt-dlp that ignores SIGINT is killed after 5 s so pause and quit can't hang.
     return try await withTaskCancellationHandler {
         async let lastError = lastErrorLine(stderr.fileHandleForReading)
         var progress = StreamProgress()
@@ -107,6 +108,9 @@ private func runYtDlp(_ executable: URL, _ arguments: [String], onEvent: @escapi
         return file
     } onCancel: {
         process.interrupt()   // SIGINT: yt-dlp keeps its .part file
+        DispatchQueue.global().asyncAfter(deadline: .now() + 5) {
+            if process.isRunning { kill(process.processIdentifier, SIGKILL) }
+        }
     }
 }
 

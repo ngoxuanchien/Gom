@@ -27,7 +27,7 @@ final class VideoSetup {
             ytDlpVersion = nil
         }
         located = true
-        queue.retryMissingTools()
+        if tools.ytDlp != nil && tools.ffmpeg != nil { queue.retryMissingTools() }   // deno is optional
     }
 
     /// Called after a video is added and from Settings: asks to install whatever is missing.

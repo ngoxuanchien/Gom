@@ -9,8 +9,8 @@ public final class DownloadQueue {
     public var highlighted: UUID?
     /// Called when a download ends completed or failed; not on pause, removal or shutdown.
     @ObservationIgnored public var onFinished: ((DownloadRecord) -> Void)?
-    /// Where yt-dlp and ffmpeg are. Set by the app at launch and after installing them.
-    @ObservationIgnored public var videoTools = VideoTools()
+    /// Where yt-dlp, ffmpeg and deno are. Set by the app at launch and after installing them.
+    @ObservationIgnored public var videoTools: VideoTools
 
     let store: DownloadStore
     let streamer: HTTPStreamer
@@ -25,12 +25,14 @@ public final class DownloadQueue {
         store: DownloadStore,
         streamer: HTTPStreamer = HTTPStreamer(),
         maxConcurrent: Int = 3,
-        retryDelay: @escaping @Sendable (Int) -> Duration = defaultRetryDelay
+        retryDelay: @escaping @Sendable (Int) -> Duration = defaultRetryDelay,
+        videoTools: VideoTools = VideoTools()
     ) {
         self.store = store
         self.streamer = streamer
         self.maxConcurrent = maxConcurrent
         self.retryDelay = retryDelay
+        self.videoTools = videoTools   // before schedule(): a persisted video must not see "not installed"
         // A record still marked downloading was interrupted by a crash: queue it again.
         items = store.load().map { record in
             var record = record
@@ -50,7 +52,7 @@ public final class DownloadQueue {
 
     @discardableResult
     public func add(url: URL, headers: [String: String] = [:], filename: String? = nil, directory: URL, categories: [FileCategory]? = nil, video: VideoQuality? = nil) -> UUID {
-        if let existing = items.first(where: { $0.url == url && $0.state != .completed }) {
+        if let existing = items.first(where: { $0.url == url && $0.video == video && $0.state != .completed }) {
             highlighted = existing.id
             return existing.id
         }

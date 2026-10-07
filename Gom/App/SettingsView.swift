@@ -89,6 +89,7 @@ struct SettingsView: View {
                 }
                 LabeledContent("yt-dlp") { toolStatus(videoSetup.tools.ytDlp, version: videoSetup.ytDlpVersion) }
                 LabeledContent("ffmpeg") { toolStatus(videoSetup.tools.ffmpeg, version: nil) }
+                LabeledContent("deno") { toolStatus(videoSetup.tools.deno, version: nil) }
                 if !videoSetup.tools.missing.isEmpty {
                     HStack {
                         Spacer()

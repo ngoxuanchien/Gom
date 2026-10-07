@@ -25,7 +25,7 @@ struct GomApp: App {
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    let queue = DownloadQueue(store: .appSupport)
+    let queue = DownloadQueue(store: .appSupport, videoTools: VideoTools.locate(in: toolDirectories(loginShellPATH: nil)))
     lazy var videoSetup = VideoSetup(queue: queue)
     private var server: BridgeServer?
 

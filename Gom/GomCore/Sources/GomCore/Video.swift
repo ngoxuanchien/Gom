@@ -78,7 +78,7 @@ struct StreamProgress {
 
 func ytDlpArguments(url: URL, quality: VideoQuality, ffmpeg: URL, folder: URL, limitRate: Int, headers: [String: String]) -> [String] {
     var args = [
-        "--quiet", "--no-simulate", "--progress", "--newline", "--no-playlist", "--no-mtime",
+        "--quiet", "--no-simulate", "--progress", "--newline", "--no-playlist", "-I", "1", "--no-mtime",
         "--progress-template", "download:GOM %(progress.downloaded_bytes)s %(progress.total_bytes)s %(progress.total_bytes_estimate)s %(progress.speed)s",
         "--print", "before_dl:GOMNAME %(title)s",
         "--print", "after_move:GOMFILE %(filepath)s",
@@ -99,20 +99,34 @@ public struct VideoTools: Equatable, Sendable {
     public var ytDlp: URL?
     public var ffmpeg: URL?
     public var brew: URL?
+    /// JavaScript runtime yt-dlp needs for YouTube. Optional: the engine runs without it.
+    public var deno: URL?
 
-    public init(ytDlp: URL? = nil, ffmpeg: URL? = nil, brew: URL? = nil) {
+    public init(ytDlp: URL? = nil, ffmpeg: URL? = nil, brew: URL? = nil, deno: URL? = nil) {
         self.ytDlp = ytDlp
         self.ffmpeg = ffmpeg
         self.brew = brew
+        self.deno = deno
     }
 
     public static func locate(in directories: [URL]) -> VideoTools {
-        VideoTools(ytDlp: locateTool("yt-dlp", in: directories), ffmpeg: locateTool("ffmpeg", in: directories), brew: locateTool("brew", in: directories))
+        VideoTools(ytDlp: locateTool("yt-dlp", in: directories), ffmpeg: locateTool("ffmpeg", in: directories), brew: locateTool("brew", in: directories), deno: locateTool("deno", in: directories))
     }
 
     /// Homebrew formula names of the tools that weren't found.
     public var missing: [String] {
-        [ytDlp == nil ? "yt-dlp" : nil, ffmpeg == nil ? "ffmpeg" : nil].compactMap { $0 }
+        [ytDlp == nil ? "yt-dlp" : nil, ffmpeg == nil ? "ffmpeg" : nil, deno == nil ? "deno" : nil].compactMap { $0 }
+    }
+
+    /// PATH for the yt-dlp process: the tools' folders (so it finds deno and ffmpeg), then the system ones.
+    var processPATH: String {
+        var folders: [String] = []
+        for tool in [ytDlp, ffmpeg, deno] {
+            guard var folder = tool?.deletingLastPathComponent().path(percentEncoded: false) else { continue }
+            if folder.count > 1, folder.hasSuffix("/") { folder.removeLast() }
+            if !folders.contains(folder) { folders.append(folder) }
+        }
+        return (folders + ["/usr/bin", "/bin", "/usr/sbin", "/sbin"]).joined(separator: ":")
     }
 }
 
@@ -128,7 +142,7 @@ public func locateTool(
 /// then whatever the login shell adds (pass its `$PATH`).
 public func toolDirectories(loginShellPATH: String?) -> [URL] {
     var paths = ["/opt/homebrew/bin", "/usr/local/bin", URL.homeDirectory.appending(path: ".local/bin").path(percentEncoded: false)]
-    for path in (loginShellPATH ?? "").split(separator: ":").map(String.init) where !paths.contains(path) {
+    for path in (loginShellPATH ?? "").split(separator: ":").map(String.init) where path.hasPrefix("/") && !paths.contains(path) {
         paths.append(path)
     }
     return paths.map { URL(filePath: $0, directoryHint: .isDirectory) }

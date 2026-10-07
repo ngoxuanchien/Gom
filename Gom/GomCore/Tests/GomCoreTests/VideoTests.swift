@@ -86,6 +86,8 @@ import Testing
         #expect(args.contains("Referer:https://youtube.com/"))
         #expect(args.suffix(2) == ["--", "https://youtu.be/abc"])
         #expect(args.contains("res:720,ext:mp4:m4a"))
+        let items = args.firstIndex(of: "-I")!
+        #expect(args[items + 1] == "1")
         let rate = args.firstIndex(of: "--limit-rate")!
         #expect(args[rate + 1] == "500000")
         let folder = args.firstIndex(of: "-P")!
@@ -106,15 +108,22 @@ import Testing
     }
 
     @Test func toolDirectoriesAppendLoginShellPATHWithoutDuplicates() {
-        let paths = toolDirectories(loginShellPATH: "/usr/local/bin:/Users/me/bin:").map { $0.path(percentEncoded: false) }
+        let paths = toolDirectories(loginShellPATH: "/usr/local/bin:.:bin:/Users/me/bin:").map { $0.path(percentEncoded: false) }
         #expect(Array(paths.prefix(2)) == ["/opt/homebrew/bin/", "/usr/local/bin/"])
         #expect(paths.last == "/Users/me/bin/")
         #expect(paths.filter { $0 == "/usr/local/bin/" }.count == 1)
+        #expect(!paths.contains { !$0.hasPrefix("/") })
     }
 
     @Test func missingTools() {
-        #expect(VideoTools(ffmpeg: URL(filePath: "/f")).missing == ["yt-dlp"])
-        #expect(VideoTools().missing == ["yt-dlp", "ffmpeg"])
+        #expect(VideoTools(ffmpeg: URL(filePath: "/f"), deno: URL(filePath: "/d")).missing == ["yt-dlp"])
+        #expect(VideoTools().missing == ["yt-dlp", "ffmpeg", "deno"])
+    }
+
+    @Test func processPATHListsToolFoldersOnceBeforeSystemOnes() {
+        let tools = VideoTools(ytDlp: URL(filePath: "/opt/homebrew/bin/yt-dlp"), ffmpeg: URL(filePath: "/opt/homebrew/bin/ffmpeg"), deno: URL(filePath: "/Users/me/.deno/bin/deno"))
+        #expect(tools.processPATH == "/opt/homebrew/bin:/Users/me/.deno/bin:/usr/bin:/bin:/usr/sbin:/sbin")
+        #expect(VideoTools().processPATH == "/usr/bin:/bin:/usr/sbin:/sbin")
     }
 
     @Test func runsProcessToCompletion() async throws {
