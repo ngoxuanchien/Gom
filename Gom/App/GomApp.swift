@@ -65,7 +65,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                         // The menu item is the choice: no folder dialog. The file is sorted once yt-dlp names it.
                         queue.add(url: add.url, headers: add.headers, directory: AppSettings.downloadDirectory,
                                   categories: AppSettings.sortByType ? AppSettings.categories : nil, video: video)
-                        videoSetup.offerInstallIfNeeded()
+                        Task { await videoSetup.offerInstallIfNeeded() }
                     } else {
                         Self.chooseFolder(for: add) { directory in
                             queue.add(url: add.url, headers: add.headers, filename: add.filename, directory: directory)

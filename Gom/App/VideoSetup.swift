@@ -9,6 +9,8 @@ final class VideoSetup {
     private(set) var tools = VideoTools()
     private(set) var ytDlpVersion: String?
     private(set) var installing = false
+    private var located = false
+    private var prompting = false
     private let queue: DownloadQueue
 
     init(queue: DownloadQueue) { self.queue = queue }
@@ -16,7 +18,7 @@ final class VideoSetup {
     /// Looks the tools up again and hands them to the queue.
     func refresh() async {
         let shell = URL(filePath: ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh")
-        let path = try? await runProcess(shell, ["-lc", "echo $PATH"]).output.trimmingCharacters(in: .whitespacesAndNewlines)
+        let path = try? await runProcess(shell, ["-lc", "echo $PATH"]).output.split(separator: "\n").last.map(String.init)
         tools = VideoTools.locate(in: toolDirectories(loginShellPATH: path))
         queue.videoTools = tools
         if let ytDlp = tools.ytDlp {
@@ -24,18 +26,26 @@ final class VideoSetup {
         } else {
             ytDlpVersion = nil
         }
+        located = true
+        queue.retryMissingTools()
     }
 
     /// Called after a video is added and from Settings: asks to install whatever is missing.
-    func offerInstallIfNeeded() {
-        guard !tools.missing.isEmpty, !installing else { return }
+    func offerInstallIfNeeded() async {
+        if !located { await refresh() }
+        guard !tools.missing.isEmpty, !installing, !prompting else { return }
+        prompting = true
+        defer { prompting = false }
         let alert = NSAlert()
         alert.messageText = "Video downloads need \(tools.missing.joined(separator: " and "))"
         if tools.brew != nil {
             alert.informativeText = "Gom can install them with Homebrew. Videos waiting for them start once it's done."
             alert.addButton(withTitle: "Install")
             alert.addButton(withTitle: "Cancel")
-            if alert.runModal() == .alertFirstButtonReturn { Task { await install() } }
+            if alert.runModal() == .alertFirstButtonReturn {
+                installing = true
+                Task { await install() }
+            }
         } else {
             alert.informativeText = "Install Homebrew, then run this in Terminal:\n\nbrew install \(tools.missing.joined(separator: " "))"
             alert.addButton(withTitle: "Get Homebrew")
@@ -44,9 +54,8 @@ final class VideoSetup {
         }
     }
 
-    func install() async {
-        guard let brew = tools.brew, !tools.missing.isEmpty, !installing else { return }
-        installing = true
+    private func install() async {
+        guard let brew = tools.brew, !tools.missing.isEmpty else { installing = false; return }
         defer { installing = false }
         do {
             let result = try await runProcess(brew, ["install"] + tools.missing)
@@ -57,7 +66,6 @@ final class VideoSetup {
             showInstallError(error.localizedDescription)
         }
         await refresh()
-        queue.retryMissingTools()
     }
 
     private func showInstallError(_ detail: String) {

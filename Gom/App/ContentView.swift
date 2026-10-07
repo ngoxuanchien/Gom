@@ -51,7 +51,7 @@ struct ContentView: View {
             }
             .dropDestination(for: URL.self) { urls, _ in
                 let valid = urls.filter(isDownloadableURL)
-                valid.forEach(add)
+                addAll(valid)
                 return !valid.isEmpty
             }
         }
@@ -59,13 +59,18 @@ struct ContentView: View {
     }
 
     private func addLinks() {
-        parseURLList(input).forEach(add)
+        addAll(parseURLList(input))
         input = ""
     }
 
-    private func add(_ url: URL) {
-        let video = isVideoPage(url) ? AppSettings.videoQuality : nil
-        queue.add(url: url, directory: AppSettings.downloadDirectory, categories: AppSettings.sortByType ? AppSettings.categories : nil, video: video)
-        if video != nil { videoSetup.offerInstallIfNeeded() }
+    /// Offers the tool install once per batch, not once per video link.
+    private func addAll(_ urls: [URL]) {
+        var anyVideo = false
+        for url in urls {
+            let video = isVideoPage(url) ? AppSettings.videoQuality : nil
+            queue.add(url: url, directory: AppSettings.downloadDirectory, categories: AppSettings.sortByType ? AppSettings.categories : nil, video: video)
+            anyVideo = anyVideo || video != nil
+        }
+        if anyVideo { Task { await videoSetup.offerInstallIfNeeded() } }
     }
 }
