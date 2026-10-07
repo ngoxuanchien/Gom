@@ -9,7 +9,7 @@
     "default_icon": { "16": "icons/16.png", "32": "icons/32.png" },
     "default_popup": "options.html"
   },
-  "permissions": ["downloads", "cookies", "storage"],
+  "permissions": ["downloads", "cookies", "storage", "webRequest"],
   "host_permissions": ["<all_urls>"],
   "background": { "service_worker": "background.js" },
   "options_page": "options.html"

@@ -1,5 +1,13 @@
 const DEFAULTS = { enabled: true, port: 47615, token: "", thresholdMB: 0 };
 
+// URLs whose latest navigation was a POST (form submit). Gom can only re-request with GET.
+// ponytail: never pruned; the service worker stops after ~30s idle, which clears it.
+const postUrls = new Set();
+chrome.webRequest.onBeforeRequest.addListener(
+  ({ url, method }) => (method === "POST" ? postUrls.add(url) : postUrls.delete(url)),
+  { urls: ["<all_urls>"], types: ["main_frame", "sub_frame"] }
+);
+
 async function cookieHeader(url) {
   const cookies = await chrome.cookies.getAll({ url });
   return cookies.map((c) => `${c.name}=${c.value}`).join("; ");
@@ -37,6 +45,7 @@ async function handOff(item) {
   const url = item.finalUrl || item.url;
   if (!settings.enabled || !settings.token) return false;
   if (!/^https?:/i.test(url)) return false; // blob:, data: etc. only exist inside the page
+  if (postUrls.has(url)) return false; // a GET from Gom wouldn't return the same file
   // Response headers have arrived by now, so the size is known unless the server didn't send one.
   if (item.totalBytes > 0 && item.totalBytes < settings.thresholdMB * 1024 * 1024) return false;
   if (!(await sendToGom(item, settings))) return false; // Gom not running: let Chrome do it
