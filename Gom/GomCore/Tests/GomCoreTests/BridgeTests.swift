@@ -67,4 +67,14 @@ import Testing
         #expect(allHex)
         #expect(a != b)
     }
+
+    @Test func addCarriesVideoQuality() {
+        let (response, add) = route(request("POST", "/add", body: #"{"url":"https://youtu.be/abc","video":"720p"}"#), token: "secret")
+        #expect(response.status == 200)
+        #expect(add?.video == .p720)
+    }
+
+    @Test func addRejectsUnknownVideoQuality() {
+        #expect(route(request("POST", "/add", body: #"{"url":"https://youtu.be/abc","video":"4k"}"#), token: "secret").0.status == 400)
+    }
 }

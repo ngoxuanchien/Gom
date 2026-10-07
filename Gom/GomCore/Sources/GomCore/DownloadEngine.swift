@@ -256,7 +256,7 @@ private func finish(_ r: inout DownloadRecord) throws {
 }
 
 /// Retries when another download claims the same name between the check and the move.
-private func moveToUniqueDestination(_ source: URL, directory: URL, filename: String) throws -> URL {
+func moveToUniqueDestination(_ source: URL, directory: URL, filename: String) throws -> URL {
     while true {
         let destination = uniqueDestination(in: directory, filename: filename)
         // RENAME_EXCL fails instead of silently replacing a file another download just moved here.
