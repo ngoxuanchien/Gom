@@ -124,9 +124,13 @@ private func finishVideo(_ r: inout DownloadRecord, file: String, folder: URL) t
     }
     r.categories = nil
     try FileManager.default.createDirectory(at: r.directory, withIntermediateDirectories: true)
-    r.filename = try moveToUniqueDestination(source, directory: r.directory, filename: name).lastPathComponent
+    let destination = try moveToUniqueDestination(source, directory: r.directory, filename: name)
+    r.filename = destination.lastPathComponent
     try? FileManager.default.removeItem(at: folder)
-    r.totalBytes = r.downloadedBytes
+    // After a resume yt-dlp only reports the streams it fetched this run, so use the real size.
+    let size = (try? FileManager.default.attributesOfItem(atPath: destination.path(percentEncoded: false))[.size] as? Int64) ?? r.downloadedBytes
+    r.totalBytes = size
+    r.segments = [Segment(start: 0, end: size - 1, done: size)]
     r.state = .completed
     r.headers = [:]   // same as file downloads: don't keep request headers once done
 }

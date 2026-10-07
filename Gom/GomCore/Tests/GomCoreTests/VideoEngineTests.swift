@@ -37,7 +37,7 @@ echo "GOMFILE $dir/Test Clip [abc].mp4"
         #expect(result.state == .completed)
         #expect(result.fileURL?.path(percentEncoded: false) == dir.appending(path: "Video/Test Clip [abc].mp4").path(percentEncoded: false))
         #expect(try String(contentsOf: result.fileURL!, encoding: .utf8) == "video")
-        #expect(result.totalBytes == 100)
+        #expect(result.totalBytes == 5)   // the real file size, not yt-dlp's reported total
         #expect(result.headers.isEmpty)
         #expect(progress.value == [50, 100])
         // The hidden temp folder is gone.
@@ -72,6 +72,19 @@ echo "GOMFILE $dir/Test Clip [abc].mp4"
         let (elapsed, filename) = try #require(first.value)
         #expect(elapsed < .milliseconds(1500))
         #expect(filename == "Slow Clip")
+    }
+
+    @Test func completedSizeIsTheFileSizeEvenWhenYtDlpReportsLess() async throws {
+        let dir = try makeTempDir()
+        let tools = try fakeYtDlp("""
+        echo "GOM 2 2 NA NA"
+        printf 'video' > "$dir/Clip [abc].mp4"
+        echo "GOMFILE $dir/Clip [abc].mp4"
+        """)
+        let result = await runVideoDownload(videoRecord(dir), tools: tools)
+        #expect(result.state == .completed)
+        #expect(result.totalBytes == 5)
+        #expect(result.downloadedBytes == 5)
     }
 
     @Test func failureUsesLastErrorLine() async throws {
