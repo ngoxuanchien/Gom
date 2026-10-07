@@ -23,6 +23,8 @@ public struct DownloadRecord: Codable, Identifiable, Equatable, Sendable {
     public var segments: [Segment]
     public var state: DownloadState
     public var addedAt: Date
+    /// When the download finished; nil until then, and for downloads finished before this was recorded.
+    public var completedAt: Date?
 
     public init(url: URL, headers: [String: String] = [:], filename: String? = nil, directory: URL, categories: [FileCategory]? = nil, id: UUID = UUID(), addedAt: Date = .now, video: VideoQuality? = nil) {
         self.id = id
@@ -50,4 +52,21 @@ public struct DownloadRecord: Codable, Identifiable, Equatable, Sendable {
     }
 
     public var fileURL: URL? { filename.map { directory.appending(path: $0) } }
+}
+
+/// Groups the list by the day each download finished (or was added, if that wasn't recorded), newest day first,
+/// keeping the given order inside a day. Anything not finished stays under today so an old paused or failed
+/// download isn't tucked away.
+public func daySections(_ items: [DownloadRecord], now: Date = .now, calendar: Calendar = .current) -> [(day: Date, items: [DownloadRecord])] {
+    let today = calendar.startOfDay(for: now)
+    var sections: [(day: Date, items: [DownloadRecord])] = []
+    for item in items {
+        let day = item.state == .completed ? min(calendar.startOfDay(for: item.completedAt ?? item.addedAt), today) : today
+        if let i = sections.firstIndex(where: { $0.day == day }) {
+            sections[i].items.append(item)
+        } else {
+            sections.append((day, [item]))
+        }
+    }
+    return sections.sorted { $0.day > $1.day }
 }
