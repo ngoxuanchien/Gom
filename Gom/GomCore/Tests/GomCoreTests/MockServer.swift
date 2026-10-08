@@ -26,14 +26,13 @@ final class MockRegistry: Sendable {
     let files = Mutex<[String: MockFile]>([:])
 }
 
-/// Each `serve` call gets its own random host, so tests can run in parallel.
+/// Each `serve` call gets its own random host, so tests can run in parallel; pass `host` to share one.
 enum MockServer {
     static let registry = MockRegistry()
 
-    static func serve(_ config: MockFile.Config, path: String = "/file.bin") -> (URL, MockFile) {
-        let host = "\(UUID().uuidString.lowercased()).test"
+    static func serve(_ config: MockFile.Config, path: String = "/file.bin", host: String = "\(UUID().uuidString.lowercased()).test") -> (URL, MockFile) {
         let file = MockFile(config)
-        registry.files.withLock { $0[host] = file }
+        registry.files.withLock { $0[host + path] = file }
         return (URL(string: "https://\(host)\(path)")!, file)
     }
 
@@ -53,7 +52,7 @@ final class MockURLProtocol: URLProtocol, @unchecked Sendable {
 
     override func startLoading() {
         let request = self.request
-        guard let host = request.url?.host(), let file = MockServer.registry.files.withLock({ $0[host] }) else {
+        guard let url = request.url, let host = url.host(), let file = MockServer.registry.files.withLock({ $0[host + url.path()] }) else {
             client?.urlProtocol(self, didFailWithError: URLError(.cannotFindHost))
             return
         }

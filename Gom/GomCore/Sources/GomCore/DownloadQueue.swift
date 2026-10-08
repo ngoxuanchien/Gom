@@ -1,6 +1,9 @@
 import Foundation
 import Observation
 
+/// Connections Gom lets one server's downloads use: one fully segmented download.
+public let connectionsPerHost = defaultSegmentCount
+
 @MainActor
 @Observable
 public final class DownloadQueue {
@@ -18,7 +21,6 @@ public final class DownloadQueue {
 
     let store: DownloadStore
     let streamer: HTTPStreamer
-    let maxConcurrent: Int
     let retryDelay: @Sendable (Int) -> Duration
     @ObservationIgnored private var running: [UUID: Task<Void, Never>] = [:]
     @ObservationIgnored private var lastSave = ContinuousClock.now
@@ -33,13 +35,11 @@ public final class DownloadQueue {
     public init(
         store: DownloadStore,
         streamer: HTTPStreamer = HTTPStreamer(),
-        maxConcurrent: Int = 3,
         retryDelay: @escaping @Sendable (Int) -> Duration = defaultRetryDelay,
         videoTools: VideoTools = VideoTools()
     ) {
         self.store = store
         self.streamer = streamer
-        self.maxConcurrent = maxConcurrent
         self.retryDelay = retryDelay
         self.videoTools = videoTools   // before schedule(): a persisted video must not see "not installed"
         // A record still marked downloading was interrupted by a crash: queue it again.
@@ -167,11 +167,29 @@ public final class DownloadQueue {
         persist()
     }
 
+    /// Starts queued downloads whose server has a free connection.
     private func schedule() {
         guard !shuttingDown else { return }
-        for record in items where record.state == .queued && (record.scheduled != true || windowOpen) && running.count < maxConcurrent {
-            start(record)
+        var used: [String: Int] = [:]
+        for record in items where running[record.id] != nil {
+            used[host(of: record), default: 0] += connections(of: record)
         }
+        for record in items where record.state == .queued && (record.scheduled != true || windowOpen) {
+            let host = host(of: record)
+            guard used[host, default: 0] < connectionsPerHost else { continue }
+            start(record)
+            used[host, default: 0] += connections(of: record)
+        }
+    }
+
+    // ponytail: the host as added; a redirect to a CDN still counts against it.
+    private func host(of record: DownloadRecord) -> String { record.url.host() ?? "" }
+
+    /// Connections a download has open or may open; before probing that can be a full set of segments.
+    private func connections(of record: DownloadRecord) -> Int {
+        if record.video != nil { return 1 }
+        if record.segments.isEmpty { return defaultSegmentCount }
+        return record.resumable ? record.segments.filter { !$0.isComplete }.count : 1
     }
 
     private func start(_ record: DownloadRecord) {
@@ -212,6 +230,7 @@ public final class DownloadQueue {
         // The engine's copy predates any schedule toggle made since the start.
         update(record.id) { var record = record; record.scheduled = $0.scheduled; $0 = record }
         if now - lastSave >= .seconds(2) { persist() }
+        schedule()   // a finished segment frees a connection for the next download from this server
     }
 
     private func finished(_ id: UUID, _ result: DownloadRecord) {

@@ -62,6 +62,7 @@ public func runDownload(
         do {
             if needsPrepare(r) {
                 try await prepare(&r, streamer: streamer, maxAttempts: maxAttempts, retryDelay: retryDelay, singleConnection: singleConnection)
+                onProgress(r)   // the queue learns the segment count, and so the connections used, before the first chunk
             }
             if r.resumable {
                 try await transferSegments(&r, streamer: streamer, maxAttempts: maxAttempts, retryDelay: retryDelay, onProgress: onProgress)

@@ -40,6 +40,8 @@ public final class HTTPStreamer: Sendable {
         // Cookies come only from the request headers the extension supplied.
         configuration.httpShouldSetCookies = false
         configuration.httpCookieAcceptPolicy = .never
+        // DownloadQueue may briefly start a download beside one winding down; none of its requests should queue here.
+        configuration.httpMaximumConnectionsPerHost = 2 * connectionsPerHost
         let delegate = StreamDelegate()
         self.delegate = delegate
         session = URLSession(configuration: configuration, delegate: delegate, delegateQueue: nil)
