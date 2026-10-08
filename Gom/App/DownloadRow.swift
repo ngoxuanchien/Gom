@@ -33,28 +33,6 @@ struct DownloadRow: View {
         }
         .padding(.vertical, 4)
         .contentShape(Rectangle())
-        .onTapGesture(count: 2) {
-            if item.state == .completed, let url = item.fileURL { open(url) }
-        }
-        .contextMenu {
-            if item.state == .completed, let url = item.fileURL {
-                Button("Open") { open(url) }
-            }
-            if item.state != .completed {
-                if item.scheduled == true {
-                    Button("Start Now") {
-                        queue.setScheduled(item.id, false)
-                        queue.resume(item.id)   // a paused or failed one starts too
-                    }
-                } else {
-                    Button("Start in Schedule") { queue.setScheduled(item.id, true) }
-                }
-            }
-            Button("Remove from List") { queue.remove(item.id, deleteFile: false) }
-            if item.state == .completed {
-                Button("Remove and Delete File", role: .destructive) { queue.remove(item.id, deleteFile: true) }
-            }
-        }
     }
 
     @ViewBuilder private var status: some View {
@@ -118,6 +96,7 @@ struct DownloadRow: View {
                         NSWorkspace.shared.activateFileViewerSelecting([url])
                     }
                 }
+                iconButton("trash", "Move to Trash") { queue.remove(item.id, deleteFile: true) }
             }
             iconButton("xmark", "Remove") { queue.remove(item.id, deleteFile: false) }
         }
@@ -142,5 +121,38 @@ struct DownloadRow: View {
 
     private func bytes(_ count: Int64) -> String {
         ByteCountFormatter.string(fromByteCount: count, countStyle: .file)
+    }
+}
+
+/// Context menu for the right-clicked row, or for every selected row when the click lands in the selection.
+struct DownloadMenu: View {
+    let items: [DownloadRecord]
+    let queue: DownloadQueue
+
+    var body: some View {
+        let finished = items.filter { $0.state == .completed }
+        if !finished.isEmpty {
+            Button("Open") { Self.open(finished, queue: queue) }
+        }
+        if items.count == 1, let item = items.first, item.state != .completed {
+            if item.scheduled == true {
+                Button("Start Now") {
+                    queue.setScheduled(item.id, false)
+                    queue.resume(item.id)   // a paused or failed one starts too
+                }
+            } else {
+                Button("Start in Schedule") { queue.setScheduled(item.id, true) }
+            }
+        }
+        Button("Remove from List") { for item in items { queue.remove(item.id, deleteFile: false) } }
+        if !finished.isEmpty {
+            Button("Move to Trash", role: .destructive) { for item in items { queue.remove(item.id, deleteFile: true) } }
+        }
+    }
+
+    static func open(_ items: [DownloadRecord], queue: DownloadQueue) {
+        let finished = items.filter { $0.state == .completed && $0.fileURL != nil }
+        queue.markSeen(finished.map(\.id))
+        for item in finished { NSWorkspace.shared.open(item.fileURL!) }
     }
 }
