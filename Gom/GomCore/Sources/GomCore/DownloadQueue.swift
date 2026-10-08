@@ -143,14 +143,14 @@ public final class DownloadQueue {
         persist()
     }
 
-    /// Unfinished downloads always lose their temp file; `deleteFile` also deletes a finished file.
+    /// Unfinished downloads always lose their temp file; `deleteFile` also moves a finished file to the Trash.
     public func remove(_ id: UUID, deleteFile: Bool) {
         guard let record = items.first(where: { $0.id == id }) else { return }
         items.removeAll { $0.id == id }
         if let task = running[id] {
             task.cancel()   // finished() deletes the temp file once the engine has stopped writing
         } else if record.state == .completed {
-            if deleteFile, let file = record.fileURL { try? FileManager.default.removeItem(at: file) }
+            if deleteFile, let file = record.fileURL { try? FileManager.default.trashItem(at: file, resultingItemURL: nil) }
         } else if let temp = record.tempURL {
             try? FileManager.default.removeItem(at: temp)
         }

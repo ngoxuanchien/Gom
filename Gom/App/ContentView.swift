@@ -12,6 +12,8 @@ struct ContentView: View {
     @AppStorage("fileCategories") private var categoriesData: Data?
     /// Days the user opened or closed; today starts open, older days closed.
     @State private var toggledDays: Set<Date> = []
+    @State private var selection: Set<UUID> = []
+    @FocusState private var listFocused: Bool
 
     private let otherGroup = "\u{1}other"   // can't collide: folder names are sanitized filenames
 
@@ -120,7 +122,7 @@ struct ContentView: View {
             .background(.quaternary.opacity(0.5), in: .rect(cornerRadius: 10))
             .padding()
             Divider()
-            List {
+            List(selection: $selection) {
                 ForEach(daySections(visibleItems), id: \.day) { section in
                     Section(isExpanded: isExpanded(section.day)) {
                         ForEach(section.items) { item in
@@ -146,6 +148,19 @@ struct ContentView: View {
                 }
             }
             .listStyle(.plain)
+            .focused($listFocused)
+            // Clicking a row doesn't focus the list, so ⌫ would go to the window instead of onDeleteCommand.
+            .onChange(of: selection) { if !selection.isEmpty { listFocused = true } }
+            .contextMenu(forSelectionType: DownloadRecord.ID.self) { ids in
+                DownloadMenu(items: queue.items.filter { ids.contains($0.id) }, queue: queue)
+            } primaryAction: { ids in
+                DownloadMenu.open(queue.items.filter { ids.contains($0.id) }, queue: queue)
+            }
+            // ⌫ / Edit › Delete: finished files go to the Trash, unfinished downloads are cancelled.
+            .onDeleteCommand {
+                for id in selection { queue.remove(id, deleteFile: true) }
+                selection = []
+            }
             .overlay {
                 if queue.items.isEmpty {
                     ContentUnavailableView(

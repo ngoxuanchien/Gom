@@ -171,6 +171,25 @@ import Testing
         #expect(try Data(contentsOf: #require(relaunched.items.first?.fileURL)) == data)
     }
 
+    @Test func removeWithDeleteFileMovesItToTrash() async throws {
+        let dir = try makeTempDir()
+        let queue = makeQueue(dir)
+        let name = "gom-trash-test-\(UUID().uuidString).bin"
+        let (url, _) = MockServer.serve(.init(data: testData(10_000)), path: "/\(name)")
+        let id = queue.add(url: url, directory: dir)
+        try await waitUntil { queue.items.first?.state == .completed }
+        let file = try #require(queue.items.first?.fileURL)
+        let trashed = try FileManager.default.url(for: .trashDirectory, in: .userDomainMask, appropriateFor: file, create: false)
+            .appending(path: name)
+
+        queue.remove(id, deleteFile: true)
+
+        defer { try? FileManager.default.removeItem(at: trashed) }
+        #expect(queue.items.isEmpty)
+        #expect(!FileManager.default.fileExists(atPath: file.path(percentEncoded: false)))
+        #expect(FileManager.default.fileExists(atPath: trashed.path(percentEncoded: false)))
+    }
+
     @Test func removeWhileRunningDeletesTempFile() async throws {
         let dir = try makeTempDir()
         let queue = makeQueue(dir)
