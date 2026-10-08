@@ -12,7 +12,7 @@ import Testing
         try FileManager.default.contentsOfDirectory(atPath: dir.path(percentEncoded: false)).filter { $0.hasSuffix(".gomdownload") }
     }
 
-    @Test func runsAtMostThreeAtOnce() async throws {
+    @Test func downloadsFromDifferentHostsAllRunAtOnce() async throws {
         let dir = try makeTempDir()
         let queue = makeQueue(dir)
         for _ in 0..<5 {
@@ -20,12 +20,38 @@ import Testing
             queue.add(url: url, directory: dir)
         }
 
-        #expect(queue.activeCount == 3)
-        #expect(queue.items.filter { $0.state == .downloading }.count == 3)
-        #expect(queue.items.filter { $0.state == .queued }.count == 2)
-
+        #expect(queue.activeCount == 5)
         try await waitUntil { queue.items.allSatisfy { $0.state == .completed } }
-        #expect(queue.activeCount == 0)
+    }
+
+    @Test func segmentedDownloadsFromOneHostWaitForFreeConnections() async throws {
+        let dir = try makeTempDir()
+        let queue = makeQueue(dir)
+        let host = "\(UUID().uuidString.lowercased()).test"
+        for n in 0..<3 {
+            let (url, _) = MockServer.serve(.init(data: testData(3_000_000), chunkDelay: 0.2), path: "/\(n).bin", host: host)
+            queue.add(url: url, directory: dir)
+        }
+
+        #expect(queue.activeCount == 1)
+        try await waitUntil { queue.items.first?.segments.count == defaultSegmentCount }
+        #expect(queue.activeCount == 1)   // all 8 segments still busy
+        try await waitUntil { queue.items.allSatisfy { $0.state == .completed } }
+    }
+
+    @Test func singleConnectionDownloadsFromOneHostFillTheHostBudget() async throws {
+        let dir = try makeTempDir()
+        let queue = makeQueue(dir)
+        let host = "\(UUID().uuidString.lowercased()).test"
+        for n in 0..<10 {
+            let (url, _) = MockServer.serve(.init(data: testData(1_000_000), chunkSize: 16 * 1024, chunkDelay: 0.05), path: "/\(n).bin", host: host)
+            queue.add(url: url, directory: dir)
+        }
+
+        try await waitUntil { queue.activeCount == connectionsPerHost }
+        try await Task.sleep(for: .milliseconds(200))
+        #expect(queue.activeCount == connectionsPerHost)
+        try await waitUntil { queue.items.allSatisfy { $0.state == .completed } }
     }
 
     @Test func duplicateURLIsIgnoredAndHighlighted() throws {
@@ -135,8 +161,9 @@ import Testing
         queue.add(url: failing, directory: dir)
         try await waitUntil { if case .failed = queue.items.first?.state { true } else { false } }
         let data = testData(500_000)
+        let host = "\(UUID().uuidString.lowercased()).test"   // one server, so its connection budget leaves some queued
         for i in 0..<4 {
-            let (url, _) = MockServer.serve(.init(data: data, chunkDelay: 0.5), path: "/slow\(i).bin")
+            let (url, _) = MockServer.serve(.init(data: data, chunkDelay: 0.5), path: "/slow\(i).bin", host: host)
             queue.add(url: url, directory: dir)
         }
         #expect(queue.items.contains { $0.state == .queued })

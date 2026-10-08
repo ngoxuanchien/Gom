@@ -1,6 +1,6 @@
 # Gom – Schedule downloads by free connections per server
 
-Date: 2026-10-08 · Status: draft
+Date: 2026-10-08 · Status: implemented
 
 ## 1. Goal
 
@@ -24,6 +24,7 @@ Run more downloads at once when connections are free, instead of a fixed three f
   - otherwise: 1.
 - `schedule()` starts a queued download when its host (`record.url.host()`) uses fewer than 8 connections, counting downloads started earlier in the same pass. Scheduled downloads still wait for their window.
 - `schedule()` also runs on every progress report, so a download starts as soon as a segment of another one on its host finishes.
+- `runDownload` reports progress once right after probing. Progress is otherwise throttled to every 500 ms, so the queue counted a fresh download as 8 connections for at least that long and single-connection downloads from one server started only one every 500 ms.
 - A host can briefly exceed 8 (up to 7 + 8 = 15) when a new download starts beside one that is winding down. `HTTPStreamer` sets `httpMaximumConnectionsPerHost` to `2 × connectionsPerHost` (16), so those requests never wait inside URLSession. The spare slot covers the save dialog's filename probe.
 - `activeCount` stays as the number of running downloads.
 
