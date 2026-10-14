@@ -154,7 +154,7 @@ private func transferSegments(
     try await withThrowingTaskGroup(of: Void.self) { group in
         for index in base.segments.indices where !base.segments[index].isComplete {
             group.addTask {
-                try await withRetry(maxAttempts, retryDelay) {
+                try await withRetry(maxAttempts, retryDelay, progress: { box.segment(index).done }) {
                     try await fetchSegment(index, of: base, box: box, streamer: streamer, onProgress: onProgress)
                 }
             }
@@ -289,8 +289,11 @@ private func discardPartial(_ r: inout DownloadRecord) {
     r.etag = nil
 }
 
-private func withRetry<T>(_ maxAttempts: Int, _ retryDelay: (Int) -> Duration, _ body: () async throws -> T) async throws -> T {
+/// Retries `body` up to `maxAttempts` times in a row. With `progress`, an attempt that moved it forward
+/// before failing doesn't count: a long download over a flaky link only gives up once it stops getting anywhere.
+private func withRetry<T>(_ maxAttempts: Int, _ retryDelay: (Int) -> Duration, progress: () -> Int64 = { 0 }, _ body: () async throws -> T) async throws -> T {
     var attempt = 0
+    var reached = progress()
     while true {
         do {
             return try await body()
@@ -298,6 +301,11 @@ private func withRetry<T>(_ maxAttempts: Int, _ retryDelay: (Int) -> Duration, _
             throw error
         } catch {
             if Task.isCancelled || error is CancellationError { throw CancellationError() }
+            let now = progress()
+            if now > reached {
+                reached = now
+                attempt = 0
+            }
             attempt += 1
             if attempt >= maxAttempts { throw error }
             try await Task.sleep(for: retryDelay(attempt - 1))

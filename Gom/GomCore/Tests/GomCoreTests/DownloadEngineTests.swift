@@ -155,6 +155,28 @@ import Testing
         #expect(file.requests.count == 1 + 6)   // probe + 1 attempt + 5 retries
     }
 
+    @Test func dropsThatMakeProgressDontUseUpRetries() async throws {
+        let dir = try makeTempDir()
+        let data = testData(1_000_000)   // under minSegmentedSize: one segment, so every drop hits the same one
+        let (url, file) = MockServer.serve(.init(data: data, dropMidBody: 8))
+        let result = await runDownload(DownloadRecord(url: url, directory: dir), streamer: MockServer.streamer(), retryDelay: noDelay)
+        #expect(result.state == .completed)
+        #expect(try contents(result) == data)
+        #expect(file.requests.count == 1 + 9)   // probe + 8 dropped + 1 that finished
+    }
+
+    @Test func singleConnectionDropsStillGiveUp() async throws {
+        let dir = try makeTempDir()
+        // No ranges: every attempt restarts from zero, so a drop proves nothing and keeps counting.
+        let (url, file) = MockServer.serve(.init(data: testData(1_000_000), supportsRanges: false, dropMidBody: 1000))
+        let result = await runDownload(DownloadRecord(url: url, directory: dir), streamer: MockServer.streamer(), retryDelay: noDelay)
+        guard case .failed = result.state else {
+            Issue.record("expected failed, got \(result.state)")
+            return
+        }
+        #expect(file.requests.count == 1 + 6)
+    }
+
     @Test func defaultRetryDelayBacksOffWithJitter() {
         for attempt in 0..<5 {
             let base = Duration.seconds(1 << attempt)

@@ -10,6 +10,7 @@ final class MockFile: Sendable {
         var extraHeaders: [String: String] = [:]
         var supportsRanges = true
         var failFirst = 0              // fail this many non-probe requests with a network error
+        var dropMidBody = 0            // this many non-probe responses send half their body, then the connection drops
         var status: Int? = nil         // force this status on every request (e.g. 403)
         var chunkSize = 64 * 1024
         var chunkDelay: TimeInterval = 0
@@ -56,14 +57,18 @@ final class MockURLProtocol: URLProtocol, @unchecked Sendable {
             client?.urlProtocol(self, didFailWithError: URLError(.cannotFindHost))
             return
         }
-        let (config, shouldFail) = file.state.withLock { c -> (MockFile.Config, Bool) in
+        let (config, shouldFail, dropHalfway) = file.state.withLock { c -> (MockFile.Config, Bool, Bool) in
             c.requests.append(request)
             let isProbe = request.value(forHTTPHeaderField: "Range") == "bytes=0-0"
             if !isProbe && c.failFirst > 0 {
                 c.failFirst -= 1
-                return (c, true)
+                return (c, true, false)
             }
-            return (c, false)
+            if !isProbe && c.dropMidBody > 0 {
+                c.dropMidBody -= 1
+                return (c, false, true)
+            }
+            return (c, false, false)
         }
         if shouldFail {
             client?.urlProtocol(self, didFailWithError: URLError(.networkConnectionLost))
@@ -75,26 +80,34 @@ final class MockURLProtocol: URLProtocol, @unchecked Sendable {
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
 
         DispatchQueue.global().async { [self] in
-            deliver(body, from: 0, chunkSize: config.chunkSize, delay: config.chunkDelay)
+            let sent = dropHalfway ? Data(body.prefix(body.count / 2)) : body
+            deliver(sent, from: 0, chunkSize: config.chunkSize, delay: config.chunkDelay, thenDrop: dropHalfway)
         }
     }
 
     /// Sends one chunk, then schedules the next. asyncAfter instead of sleeping keeps
     /// many slow parallel downloads from starving the thread pool.
-    private func deliver(_ body: Data, from offset: Int, chunkSize: Int, delay: TimeInterval) {
+    private func deliver(_ body: Data, from offset: Int, chunkSize: Int, delay: TimeInterval, thenDrop: Bool) {
         if cancelled.withLock({ $0 }) { return }
         guard offset < body.count else {
-            client?.urlProtocolDidFinishLoading(self)
+            if thenDrop {
+                // Failing right behind the last chunk lets URLSession discard data it hasn't delivered yet; give it a moment.
+                DispatchQueue.global().asyncAfter(deadline: .now() + 0.02) { [self] in
+                    client?.urlProtocol(self, didFailWithError: URLError(.networkConnectionLost))
+                }
+            } else {
+                client?.urlProtocolDidFinishLoading(self)
+            }
             return
         }
         let end = min(offset + chunkSize, body.count)
         client?.urlProtocol(self, didLoad: body.subdata(in: offset..<end))
         if delay > 0 {
             DispatchQueue.global().asyncAfter(deadline: .now() + delay) { [self] in
-                deliver(body, from: end, chunkSize: chunkSize, delay: delay)
+                deliver(body, from: end, chunkSize: chunkSize, delay: delay, thenDrop: thenDrop)
             }
         } else {
-            deliver(body, from: end, chunkSize: chunkSize, delay: delay)
+            deliver(body, from: end, chunkSize: chunkSize, delay: delay, thenDrop: thenDrop)
         }
     }
 
