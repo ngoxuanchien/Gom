@@ -14,6 +14,7 @@ public struct Segment: Codable, Equatable, Sendable {
 
     public var nextOffset: Int64 { start + done }
     public var isComplete: Bool { nextOffset > end }
+    var remaining: Int64 { end - nextOffset + 1 }
 }
 
 public let defaultSegmentCount = 8
@@ -28,4 +29,20 @@ public func makeSegments(total: Int64, count: Int = defaultSegmentCount) -> [Seg
         let end = i == n - 1 ? total - 1 : start + size - 1
         return Segment(start: start, end: end)
     }
+}
+
+/// A segment is split only when at least this much of it is left, so each half gets 512 KiB or more.
+public let minSplitRemainder: Int64 = 1024 * 1024
+
+/// Cuts the unfinished segment with the most bytes left in two and appends the second half.
+/// Returns the new segment's index, or nil if no segment has `minSplitRemainder` left.
+/// Existing indexes don't change, so a connection working on the shrunk segment keeps its index.
+func splitLargest(_ segments: inout [Segment]) -> Int? {
+    // max(by:) keeps the first of equal elements: ties go to the lowest index.
+    guard let victim = segments.indices.max(by: { segments[$0].remaining < segments[$1].remaining }),
+          segments[victim].remaining >= minSplitRemainder else { return nil }
+    let mid = segments[victim].nextOffset + segments[victim].remaining / 2
+    segments.append(Segment(start: mid, end: segments[victim].end))
+    segments[victim].end = mid - 1
+    return segments.count - 1
 }
