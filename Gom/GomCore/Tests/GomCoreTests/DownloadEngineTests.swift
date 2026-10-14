@@ -235,4 +235,27 @@ import Testing
         #expect(try contents(results[0]) == dataA)
         #expect(try contents(results[1]) == dataB)
     }
+
+    @Test func tooLittleSpaceFailsBeforeDownloading() async throws {
+        let dir = try makeTempDir()
+        let (url, file) = MockServer.serve(.init(data: testData(5_000_000)))
+        let result = await runDownload(DownloadRecord(url: url, directory: dir), streamer: MockServer.streamer(), retryDelay: noDelay, freeSpace: { _ in 1_000_000 })
+        guard case .failed(let message) = result.state else {
+            Issue.record("expected failed, got \(result.state)")
+            return
+        }
+        #expect(message.hasPrefix("Not enough disk space: needs "))
+        #expect(file.requests.count == 1)   // the probe only
+        #expect(try leftoverTempFiles(dir).isEmpty)
+    }
+
+    @Test func unknownSizeSkipsDiskCheck() async throws {
+        let dir = try makeTempDir()
+        let data = testData(5_000)
+        // No ranges and no Content-Length: the size is only known once the body has arrived.
+        let (url, _) = MockServer.serve(.init(data: data, supportsRanges: false, omitContentLength: true))
+        let result = await runDownload(DownloadRecord(url: url, directory: dir), streamer: MockServer.streamer(), retryDelay: noDelay, freeSpace: { _ in 0 })
+        #expect(result.state == .completed)
+        #expect(try contents(result) == data)
+    }
 }

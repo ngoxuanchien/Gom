@@ -15,6 +15,7 @@ final class MockFile: Sendable {
         var chunkSize = 64 * 1024
         var chunkDelay: TimeInterval = 0
         var requests: [URLRequest] = []
+        var omitContentLength = false  // send 200 responses without Content-Length, like a streamed body
         var rotateETag = false         // every response carries a new ETag, like a server farm with per-node ETags
     }
 
@@ -128,7 +129,7 @@ final class MockURLProtocol: URLProtocol, @unchecked Sendable {
                 return (206, headers, Data(config.data[low...high]))
             }
         }
-        headers["Content-Length"] = "\(total)"
+        if !config.omitContentLength { headers["Content-Length"] = "\(total)" }
         return (200, headers, config.data)
     }
 
