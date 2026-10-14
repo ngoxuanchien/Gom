@@ -1,6 +1,6 @@
 # Gom – Dynamic segment splitting
 
-Date: 2026-10-14 · Status: proposed, not implemented
+Date: 2026-10-14 · Status: implemented; manual real-server check (plan Task 4) pending
 
 Source: prompt 2 of `docs/superpowers/prompts/2026-10-14-plexo-learnings.md`.
 

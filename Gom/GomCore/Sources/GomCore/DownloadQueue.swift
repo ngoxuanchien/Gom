@@ -244,7 +244,7 @@ public final class DownloadQueue {
         // The engine's copy predates any schedule toggle made since the start.
         update(record.id) { var record = record; record.scheduled = $0.scheduled; $0 = record }
         if now - lastSave >= .seconds(2) { persist() }
-        schedule()   // a finished segment frees a connection for the next download from this server
+        schedule()   // a connection whose segment finished with nothing left to split frees up for the next download from this server
     }
 
     private func finished(_ id: UUID, _ result: DownloadRecord) {

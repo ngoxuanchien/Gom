@@ -317,6 +317,7 @@ import Testing
         }
         let deadline = ContinuousClock.now + .seconds(10)
         while !split.withLock({ $0 }), ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(20)) }
+        #expect(split.withLock { $0 }, "no progress report showed a split within 10 s")
         task.cancel()
         // As the queue would: through downloads.json and back.
         let paused = try JSONDecoder().decode(DownloadRecord.self, from: JSONEncoder().encode(await task.value))
