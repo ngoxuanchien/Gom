@@ -25,7 +25,20 @@ final class ProgressBox: Sendable {
 
     var snapshot: [Segment] { segments.withLock { $0 } }
     func segment(_ index: Int) -> Segment { segments.withLock { $0[index] } }
-    func add(_ count: Int64, to index: Int) { segments.withLock { $0[index].done += count } }
+    func end(of index: Int) -> Int64 { segments.withLock { $0[index].end } }
+
+    /// Adds `count` written bytes to segment `index`, never past its end: a split may have moved the end
+    /// below bytes already in flight (they are the same bytes the new segment fetches, so writing them is harmless).
+    /// If this completes the segment, the largest remainder is split in the same critical section, so a snapshot
+    /// never shows a freed connection that is about to be taken again. Returns the new segment's index to fetch next.
+    func add(_ count: Int64, to index: Int) -> Int? {
+        segments.withLock { segments in
+            let wasComplete = segments[index].isComplete
+            segments[index].done = min(segments[index].done + count, segments[index].end - segments[index].start + 1)
+            guard !wasComplete, segments[index].isComplete else { return nil }
+            return splitLargest(&segments)
+        }
+    }
 
     /// True at most every 500ms so progress callbacks don't flood the UI.
     func shouldReport() -> Bool {
@@ -158,9 +171,13 @@ private func transferSegments(
     defer { r.segments = box.snapshot }
     try await withThrowingTaskGroup(of: Void.self) { group in
         for index in base.segments.indices where !base.segments[index].isComplete {
+            // One task per connection: when its segment completes, it fetches the split it was handed.
             group.addTask {
-                try await withRetry(maxAttempts, retryDelay, progress: { box.segment(index).done }) {
-                    try await fetchSegment(index, of: base, box: box, streamer: streamer, onProgress: onProgress)
+                var current: Int? = index
+                while let segment = current {
+                    current = try await withRetry(maxAttempts, retryDelay, progress: { box.segment(segment).done }) {
+                        try await fetchSegment(segment, of: base, box: box, streamer: streamer, onProgress: onProgress)
+                    }
                 }
             }
         }
@@ -168,15 +185,17 @@ private func transferSegments(
     }
 }
 
+/// Fetches what is left of segment `index`. Returns the segment split off for this connection
+/// when it finished, or nil when there was nothing left to split.
 private func fetchSegment(
     _ index: Int,
     of base: DownloadRecord,
     box: ProgressBox,
     streamer: HTTPStreamer,
     onProgress: @Sendable (DownloadRecord) -> Void
-) async throws {
+) async throws -> Int? {
     let segment = box.segment(index)
-    guard !segment.isComplete, let temp = base.tempURL else { return }
+    guard !segment.isComplete, let temp = base.tempURL else { return nil }
     let handle = try FileHandle(forWritingTo: temp)
     defer { try? handle.close() }
     try handle.seek(toOffset: UInt64(segment.nextOffset))
@@ -185,9 +204,11 @@ private func fetchSegment(
 
     // Under a speed limit the range is fetched in pieces, each request sent only once the shared
     // bucket has room for it, so the network never runs ahead of the cap. Unlimited: one request.
-    while offset <= segment.end {
+    // The end is reread throughout: another connection may take over the second half of this segment.
+    while offset <= box.end(of: index) {
         let rate = limiter.bytesPerSecond
-        let last = rate > 0 ? min(segment.end, offset + Int64(pieceSize(for: rate)) - 1) : segment.end
+        let end = box.end(of: index)
+        let last = rate > 0 ? min(end, offset + Int64(pieceSize(for: rate)) - 1) : end
         if rate > 0 { try await limiter.acquire(Int(last - offset + 1)) }
         var request = makeRequest(base)
         request.setValue("bytes=\(offset)-\(last)", forHTTPHeaderField: "Range")
@@ -201,15 +222,18 @@ private func fetchSegment(
                 if response.statusCode == 200 { throw DownloadError.fileChanged }
                 guard response.statusCode == 206 else { throw DownloadError.httpStatus(response.statusCode) }
             case .data(let data):
-                let chunk = data.prefix(Int(last + 1 - offset))
+                let chunk = data.prefix(max(0, Int(min(last, box.end(of: index)) + 1 - offset)))
                 try handle.write(contentsOf: chunk)
                 offset += Int64(chunk.count)
-                box.add(Int64(chunk.count), to: index)
+                let next = box.add(Int64(chunk.count), to: index)
                 if box.shouldReport() {
                     var snapshot = base
                     snapshot.segments = box.snapshot
                     onProgress(snapshot)
                 }
+                // Leaving the loop ends the stream, which cancels the request.
+                if let next { return next }
+                if offset > box.end(of: index) { break response }   // the rest of this range was split off
                 // A limit set during an unlimited request: carry on in paced pieces from here.
                 if rate == 0, limiter.bytesPerSecond > 0 {
                     limitArrived = true
@@ -218,8 +242,9 @@ private func fetchSegment(
             }
         }
         try Task.checkCancellation()
-        if offset <= last && !limitArrived { throw DownloadError.incomplete }
+        if offset <= min(last, box.end(of: index)) && !limitArrived { throw DownloadError.incomplete }
     }
+    return nil
 }
 
 /// Servers without range support: one GET, restarted from zero on every attempt.
