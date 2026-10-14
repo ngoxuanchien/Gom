@@ -31,6 +31,19 @@ public final class DownloadQueue {
     @ObservationIgnored private var requeueing: Set<UUID> = []
     /// A scheduled download has completed or failed since the end action last fired.
     @ObservationIgnored private var scheduledRunPending = false
+    /// Held while any download runs, so the Mac doesn't idle-sleep mid-download; the display may still sleep.
+    @ObservationIgnored private var sleepGuard: (any NSObjectProtocol)?
+
+    var keepsMacAwake: Bool { sleepGuard != nil }
+
+    private func updateSleepGuard() {
+        if running.isEmpty, let activity = sleepGuard {
+            ProcessInfo.processInfo.endActivity(activity)
+            sleepGuard = nil
+        } else if !running.isEmpty, sleepGuard == nil {
+            sleepGuard = ProcessInfo.processInfo.beginActivity(options: .idleSystemSleepDisabled, reason: "Downloading files")
+        }
+    }
 
     public init(
         store: DownloadStore,
@@ -209,6 +222,7 @@ public final class DownloadQueue {
                 : await runVideoDownload(record, tools: tools, limitRate: limit, onProgress: report)
             self.finished(id, result)
         }
+        updateSleepGuard()
     }
 
     /// Stops a running download; finished() puts it back to queued with its progress.
@@ -235,6 +249,7 @@ public final class DownloadQueue {
 
     private func finished(_ id: UUID, _ result: DownloadRecord) {
         running[id] = nil
+        updateSleepGuard()
         speeds[id] = nil
         lastSample[id] = nil
         var result = result
