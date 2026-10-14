@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 import Testing
 @testable import GomCore
 
@@ -300,5 +301,43 @@ import Testing
             .compactMap { MockURLProtocol.parseRange($0, total: data.count)?.0 }
         #expect(starts.contains { $0 > slowStart })   // another connection fetched part of the slow segment
         #expect(try leftoverTempFiles(dir).isEmpty)
+    }
+
+    @Test func resumeAfterSplitFetchesOnlyWhatIsLeft() async throws {
+        let dir = try makeTempDir()
+        let data = testData(16 * 1024 * 1024)
+        let (url, file) = MockServer.serve(.init(data: data, chunkDelay: 0.05, delayOnlyAt: 7 * data.count / 8))
+        let streamer = MockServer.streamer()
+        let noDelay = noDelay
+        let split = Mutex(false)
+        let task = Task {
+            await runDownload(DownloadRecord(url: url, directory: dir), streamer: streamer, retryDelay: noDelay, onProgress: { progress in
+                if progress.segments.count > 8 { split.withLock { $0 = true } }
+            })
+        }
+        let deadline = ContinuousClock.now + .seconds(10)
+        while !split.withLock({ $0 }), ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(20)) }
+        task.cancel()
+        // As the queue would: through downloads.json and back.
+        let paused = try JSONDecoder().decode(DownloadRecord.self, from: JSONEncoder().encode(await task.value))
+
+        #expect(paused.state == .paused)
+        #expect(paused.segments.count > 8)
+        let unfinished = paused.segments.filter { !$0.isComplete }
+        #expect(!unfinished.isEmpty)
+
+        file.state.withLock { $0.chunkDelay = 0 }
+        let before = file.requests.count
+        let result = await runDownload(paused, streamer: streamer, retryDelay: noDelay)
+
+        #expect(result.state == .completed)
+        #expect(try contents(result) == data)
+        #expect(coversContiguously(result.segments, total: Int64(data.count)))
+        let resumed = file.requests[before...].compactMap { $0.value(forHTTPHeaderField: "Range") }
+            .compactMap { MockURLProtocol.parseRange($0, total: data.count) }
+        let ranges = Set(resumed.map { "\($0.0)-\($0.1)" })
+        for segment in unfinished { #expect(ranges.contains("\(segment.nextOffset)-\(segment.end)")) }
+        let written = paused.segments.map { $0.start..<$0.nextOffset }
+        #expect(resumed.allSatisfy { range in !written.contains { $0.contains(Int64(range.0)) } })
     }
 }

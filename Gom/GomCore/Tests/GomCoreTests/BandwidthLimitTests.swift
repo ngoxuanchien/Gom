@@ -125,4 +125,20 @@ import Testing
         try await waiter.value
         #expect(ContinuousClock.now - woke < .milliseconds(300))
     }
+
+    @Test func splitSegmentsArePacedToo() async throws {
+        let dir = try makeTempDir()
+        let data = testData(16 * 1024 * 1024)
+        // The slow segment's first request runs at ~320 KB/s; the others finish in ~2 s at the cap, then split it.
+        let (url, file) = MockServer.serve(.init(data: data, chunkDelay: 0.2, delayOnlyAt: 7 * data.count / 8))
+        let streamer = MockServer.streamer()
+        streamer.bytesPerSecond = 8_000_000
+
+        let result = await runDownload(DownloadRecord(url: url, directory: dir), streamer: streamer, retryDelay: noDelay)
+
+        #expect(result.state == .completed)
+        #expect(try Data(contentsOf: #require(result.fileURL)) == data)
+        #expect(result.segments.count > 8)
+        #expect(requestedLengths(file).allSatisfy { $0 <= pieceSize(for: 8_000_000) })
+    }
 }
