@@ -230,4 +230,24 @@ import Testing
         try await waitUntil { queue.activeCount == 0 }
         #expect(try leftoverTempFiles(dir).isEmpty)
     }
+
+    @Test func keepsMacAwakeOnlyWhileDownloading() async throws {
+        let dir = try makeTempDir()
+        let queue = makeQueue(dir)
+        #expect(!queue.keepsMacAwake)
+
+        let (slowURL, _) = MockServer.serve(.init(data: testData(3_000_000), chunkDelay: 0.05))
+        let slow = queue.add(url: slowURL, directory: dir)
+        #expect(queue.keepsMacAwake)
+        queue.pause(slow)
+        try await waitUntil { queue.activeCount == 0 }
+        #expect(!queue.keepsMacAwake)
+
+        let (fastURL, _) = MockServer.serve(.init(data: testData(100_000)))
+        let fast = queue.add(url: fastURL, directory: dir)
+        #expect(queue.keepsMacAwake)
+        try await waitUntil { queue.items.first { $0.id == fast }?.state == .completed }
+        try await waitUntil { queue.activeCount == 0 }
+        #expect(!queue.keepsMacAwake)
+    }
 }

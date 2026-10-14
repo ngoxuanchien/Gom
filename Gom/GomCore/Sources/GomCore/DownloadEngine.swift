@@ -5,11 +5,12 @@ public enum DownloadError: Error, Equatable {
     case httpStatus(Int)
     case fileChanged
     case incomplete
+    case notEnoughSpace(needed: Int64, available: Int64)
 
     var isFatal: Bool {
         switch self {
         case .httpStatus(let code): code == 401 || code == 403
-        case .fileChanged: true
+        case .fileChanged, .notEnoughSpace: true
         case .incomplete: false
         }
     }
@@ -52,6 +53,7 @@ public func runDownload(
     streamer: HTTPStreamer,
     maxAttempts: Int = 6,   // first attempt + 5 retries (spec)
     retryDelay: @escaping @Sendable (Int) -> Duration = defaultRetryDelay,
+    freeSpace: @escaping @Sendable (URL) -> Int64? = availableCapacity,
     onProgress: @escaping @Sendable (DownloadRecord) -> Void = { _ in }
 ) async -> DownloadRecord {
     var r = record
@@ -61,7 +63,7 @@ public func runDownload(
     while true {
         do {
             if needsPrepare(r) {
-                try await prepare(&r, streamer: streamer, maxAttempts: maxAttempts, retryDelay: retryDelay, singleConnection: singleConnection)
+                try await prepare(&r, streamer: streamer, maxAttempts: maxAttempts, retryDelay: retryDelay, singleConnection: singleConnection, freeSpace: freeSpace)
                 onProgress(r)   // the queue learns the segment count, and so the connections used, before the first chunk
             }
             if r.resumable {
@@ -89,7 +91,7 @@ private func needsPrepare(_ r: DownloadRecord) -> Bool {
 }
 
 /// Probes the server and creates a fresh temp file sized for the download.
-private func prepare(_ r: inout DownloadRecord, streamer: HTTPStreamer, maxAttempts: Int, retryDelay: @escaping @Sendable (Int) -> Duration, singleConnection: Bool) async throws {
+private func prepare(_ r: inout DownloadRecord, streamer: HTTPStreamer, maxAttempts: Int, retryDelay: @escaping @Sendable (Int) -> Duration, singleConnection: Bool, freeSpace: (URL) -> Int64?) async throws {
     let current = r
     let info = try await withRetry(maxAttempts, retryDelay) { try await probe(current, streamer: streamer) }
     discardPartial(&r)
@@ -110,6 +112,9 @@ private func prepare(_ r: inout DownloadRecord, streamer: HTTPStreamer, maxAttem
 
     let temp = r.tempURL!
     try FileManager.default.createDirectory(at: r.directory, withIntermediateDirectories: true)
+    if let needed = r.totalBytes, let available = freeSpace(r.directory), needed > available {
+        throw DownloadError.notEnoughSpace(needed: needed, available: available)
+    }
     guard FileManager.default.createFile(atPath: temp.path(percentEncoded: false), contents: nil) else {
         throw CocoaError(.fileWriteUnknown)
     }
@@ -154,7 +159,7 @@ private func transferSegments(
     try await withThrowingTaskGroup(of: Void.self) { group in
         for index in base.segments.indices where !base.segments[index].isComplete {
             group.addTask {
-                try await withRetry(maxAttempts, retryDelay) {
+                try await withRetry(maxAttempts, retryDelay, progress: { box.segment(index).done }) {
                     try await fetchSegment(index, of: base, box: box, streamer: streamer, onProgress: onProgress)
                 }
             }
@@ -282,6 +287,11 @@ func moveToUniqueDestination(_ source: URL, directory: URL, filename: String) th
     }
 }
 
+/// Free bytes on `directory`'s volume as macOS counts them for user-requested files; nil if it can't say.
+public func availableCapacity(_ directory: URL) -> Int64? {
+    try? directory.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey]).volumeAvailableCapacityForImportantUsage
+}
+
 private func discardPartial(_ r: inout DownloadRecord) {
     if let temp = r.tempURL { try? FileManager.default.removeItem(at: temp) }
     r.segments = []
@@ -289,8 +299,11 @@ private func discardPartial(_ r: inout DownloadRecord) {
     r.etag = nil
 }
 
-private func withRetry<T>(_ maxAttempts: Int, _ retryDelay: (Int) -> Duration, _ body: () async throws -> T) async throws -> T {
+/// Retries `body` up to `maxAttempts` times in a row. With `progress`, an attempt that moved it forward
+/// before failing doesn't count: a long download over a flaky link only gives up once it stops getting anywhere.
+private func withRetry<T>(_ maxAttempts: Int, _ retryDelay: (Int) -> Duration, progress: () -> Int64 = { 0 }, _ body: () async throws -> T) async throws -> T {
     var attempt = 0
+    var reached = progress()
     while true {
         do {
             return try await body()
@@ -298,6 +311,11 @@ private func withRetry<T>(_ maxAttempts: Int, _ retryDelay: (Int) -> Duration, _
             throw error
         } catch {
             if Task.isCancelled || error is CancellationError { throw CancellationError() }
+            let now = progress()
+            if now > reached {
+                reached = now
+                attempt = 0
+            }
             attempt += 1
             if attempt >= maxAttempts { throw error }
             try await Task.sleep(for: retryDelay(attempt - 1))
@@ -318,6 +336,8 @@ private func describe(_ error: any Error) -> String {
     case DownloadError.httpStatus(let code): "HTTP \(code)"
     case DownloadError.fileChanged: "File changed on the server"
     case DownloadError.incomplete: "Connection closed before the download finished"
+    case DownloadError.notEnoughSpace(let needed, let available):
+        "Not enough disk space: needs \(ByteCountFormatter.string(fromByteCount: needed, countStyle: .file)), \(ByteCountFormatter.string(fromByteCount: available, countStyle: .file)) free"
     default: error.localizedDescription
     }
 }

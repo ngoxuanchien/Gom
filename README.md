@@ -12,6 +12,8 @@
 
 - Download queue that starts a download whenever its server has a free connection (8 per server), so downloads from different servers never wait for each other; state survives app restarts.
 - Multi-connection HTTP downloads (8 segments) with pause/resume and automatic retry.
+- Long downloads over flaky connections keep going: a connection that drops after making progress is retried without using up its retries. A download that can't fit on the disk fails before it starts, saying how much space it needs.
+- Keeps the Mac from idle-sleeping while anything downloads (the display can still sleep).
 - Optional speed limit (Settings → Speed limit, in KB/s; 0 = unlimited) that caps all downloads together and applies to running downloads immediately.
 - Scheduled downloads: mark downloads (right-click → Start in Schedule, or the Schedule toggle when adding) to run only in a daily window (Settings → Schedule, e.g. 01:00–06:00). They pause when the window closes and continue the next time it opens. Optionally quit Gom or put the Mac to sleep once they finish, after a 60-second countdown you can cancel.
 - Add downloads by pasting a URL or dragging a link into the window.

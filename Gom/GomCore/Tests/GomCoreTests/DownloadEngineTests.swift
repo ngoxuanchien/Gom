@@ -155,6 +155,28 @@ import Testing
         #expect(file.requests.count == 1 + 6)   // probe + 1 attempt + 5 retries
     }
 
+    @Test func dropsThatMakeProgressDontUseUpRetries() async throws {
+        let dir = try makeTempDir()
+        let data = testData(1_000_000)   // under minSegmentedSize: one segment, so every drop hits the same one
+        let (url, file) = MockServer.serve(.init(data: data, dropMidBody: 8))
+        let result = await runDownload(DownloadRecord(url: url, directory: dir), streamer: MockServer.streamer(), retryDelay: noDelay)
+        #expect(result.state == .completed)
+        #expect(try contents(result) == data)
+        #expect(file.requests.count == 1 + 9)   // probe + 8 dropped + 1 that finished
+    }
+
+    @Test func singleConnectionDropsStillGiveUp() async throws {
+        let dir = try makeTempDir()
+        // No ranges: every attempt restarts from zero, so a drop proves nothing and keeps counting.
+        let (url, file) = MockServer.serve(.init(data: testData(1_000_000), supportsRanges: false, dropMidBody: 1000))
+        let result = await runDownload(DownloadRecord(url: url, directory: dir), streamer: MockServer.streamer(), retryDelay: noDelay)
+        guard case .failed = result.state else {
+            Issue.record("expected failed, got \(result.state)")
+            return
+        }
+        #expect(file.requests.count == 1 + 6)
+    }
+
     @Test func defaultRetryDelayBacksOffWithJitter() {
         for attempt in 0..<5 {
             let base = Duration.seconds(1 << attempt)
@@ -212,5 +234,28 @@ import Testing
         #expect(Set(results.compactMap(\.filename)) == ["file.bin", "file (1).bin"])
         #expect(try contents(results[0]) == dataA)
         #expect(try contents(results[1]) == dataB)
+    }
+
+    @Test func tooLittleSpaceFailsBeforeDownloading() async throws {
+        let dir = try makeTempDir()
+        let (url, file) = MockServer.serve(.init(data: testData(5_000_000)))
+        let result = await runDownload(DownloadRecord(url: url, directory: dir), streamer: MockServer.streamer(), retryDelay: noDelay, freeSpace: { _ in 1_000_000 })
+        guard case .failed(let message) = result.state else {
+            Issue.record("expected failed, got \(result.state)")
+            return
+        }
+        #expect(message.hasPrefix("Not enough disk space: needs "))
+        #expect(file.requests.count == 1)   // the probe only
+        #expect(try leftoverTempFiles(dir).isEmpty)
+    }
+
+    @Test func unknownSizeSkipsDiskCheck() async throws {
+        let dir = try makeTempDir()
+        let data = testData(5_000)
+        // No ranges and no Content-Length: the size is only known once the body has arrived.
+        let (url, _) = MockServer.serve(.init(data: data, supportsRanges: false, omitContentLength: true))
+        let result = await runDownload(DownloadRecord(url: url, directory: dir), streamer: MockServer.streamer(), retryDelay: noDelay, freeSpace: { _ in 0 })
+        #expect(result.state == .completed)
+        #expect(try contents(result) == data)
     }
 }
