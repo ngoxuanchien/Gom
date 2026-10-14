@@ -258,4 +258,47 @@ import Testing
         #expect(result.state == .completed)
         #expect(try contents(result) == data)
     }
+
+    @Test func completingASegmentSplitsTheLargestRemainderAtOnce() {
+        let mib: Int64 = 1024 * 1024
+        let box = ProgressBox([Segment(start: 0, end: mib - 1), Segment(start: mib, end: 5 * mib - 1)])
+        #expect(box.add(mib / 2, to: 0) == nil)
+        let unfinished = { box.snapshot.filter { !$0.isComplete }.count }
+        #expect(unfinished() == 2)
+
+        #expect(box.add(mib, to: 0) == 2)   // completes segment 0 and splits segment 1 in one step
+        #expect(box.segment(0).done == mib) // clamped at the end
+        #expect(unfinished() == 2)          // one finished, one new: the queue never sees a free connection
+        #expect(box.segment(1).end == 3 * mib - 1)
+        #expect(box.segment(2) == Segment(start: 3 * mib, end: 5 * mib - 1))
+        #expect(box.end(of: 1) == 3 * mib - 1)
+    }
+
+    @Test func addClampsAtAShrunkEndAndDoesNotSplitSmallRemainders() {
+        let box = ProgressBox([Segment(start: 0, end: 99), Segment(start: 100, end: 199)])
+        #expect(box.add(150, to: 0) == nil)   // segment 1 has 100 bytes left: too small to split
+        #expect(box.segment(0).done == 100)
+        #expect(box.snapshot.filter { !$0.isComplete }.count == 1)
+        #expect(box.add(10, to: 0) == nil)    // already complete: no second split
+        #expect(box.snapshot.count == 2)
+    }
+
+    @Test func idleConnectionTakesOverHalfOfASlowSegment() async throws {
+        let dir = try makeTempDir()
+        let data = testData(16 * 1024 * 1024)   // 2 MiB segments, large enough to split
+        let slowStart = 7 * data.count / 8
+        let (url, file) = MockServer.serve(.init(data: data, chunkDelay: 0.05, delayOnlyAt: slowStart))
+
+        let result = await runDownload(DownloadRecord(url: url, directory: dir), streamer: MockServer.streamer(), retryDelay: noDelay)
+
+        #expect(result.state == .completed)
+        #expect(try contents(result) == data)
+        #expect(result.segments.count > 8)
+        #expect(result.segments.allSatisfy { $0.isComplete })
+        #expect(coversContiguously(result.segments, total: Int64(data.count)))
+        let starts = file.requests.compactMap { $0.value(forHTTPHeaderField: "Range") }
+            .compactMap { MockURLProtocol.parseRange($0, total: data.count)?.0 }
+        #expect(starts.contains { $0 > slowStart })   // another connection fetched part of the slow segment
+        #expect(try leftoverTempFiles(dir).isEmpty)
+    }
 }
