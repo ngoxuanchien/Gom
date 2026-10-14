@@ -208,7 +208,7 @@ private func fetchSegment(
     while offset <= box.end(of: index) {
         let rate = limiter.bytesPerSecond
         let end = box.end(of: index)
-        let last = rate > 0 ? min(end, offset + Int64(pieceSize(for: rate)) - 1) : segment.end
+        let last = rate > 0 ? min(end, offset + Int64(pieceSize(for: rate)) - 1) : end
         if rate > 0 { try await limiter.acquire(Int(last - offset + 1)) }
         var request = makeRequest(base)
         request.setValue("bytes=\(offset)-\(last)", forHTTPHeaderField: "Range")
