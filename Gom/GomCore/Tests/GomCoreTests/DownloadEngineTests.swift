@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 import Testing
 @testable import GomCore
 
@@ -257,5 +258,87 @@ import Testing
         let result = await runDownload(DownloadRecord(url: url, directory: dir), streamer: MockServer.streamer(), retryDelay: noDelay, freeSpace: { _ in 0 })
         #expect(result.state == .completed)
         #expect(try contents(result) == data)
+    }
+
+    @Test func completingASegmentSplitsTheLargestRemainderAtOnce() {
+        let mib: Int64 = 1024 * 1024
+        let box = ProgressBox([Segment(start: 0, end: mib - 1), Segment(start: mib, end: 5 * mib - 1)])
+        #expect(box.add(mib / 2, to: 0) == nil)
+        let unfinished = { box.snapshot.filter { !$0.isComplete }.count }
+        #expect(unfinished() == 2)
+
+        #expect(box.add(mib, to: 0) == 2)   // completes segment 0 and splits segment 1 in one step
+        #expect(box.segment(0).done == mib) // clamped at the end
+        #expect(unfinished() == 2)          // one finished, one new: the queue never sees a free connection
+        #expect(box.segment(1).end == 3 * mib - 1)
+        #expect(box.segment(2) == Segment(start: 3 * mib, end: 5 * mib - 1))
+        #expect(box.end(of: 1) == 3 * mib - 1)
+    }
+
+    @Test func addClampsAtAShrunkEndAndDoesNotSplitSmallRemainders() {
+        let box = ProgressBox([Segment(start: 0, end: 99), Segment(start: 100, end: 199)])
+        #expect(box.add(150, to: 0) == nil)   // segment 1 has 100 bytes left: too small to split
+        #expect(box.segment(0).done == 100)
+        #expect(box.snapshot.filter { !$0.isComplete }.count == 1)
+        #expect(box.add(10, to: 0) == nil)    // already complete: no second split
+        #expect(box.snapshot.count == 2)
+    }
+
+    @Test func idleConnectionTakesOverHalfOfASlowSegment() async throws {
+        let dir = try makeTempDir()
+        let data = testData(16 * 1024 * 1024)   // 2 MiB segments, large enough to split
+        let slowStart = 7 * data.count / 8
+        let (url, file) = MockServer.serve(.init(data: data, chunkDelay: 0.05, delayOnlyAt: slowStart))
+
+        let result = await runDownload(DownloadRecord(url: url, directory: dir), streamer: MockServer.streamer(), retryDelay: noDelay)
+
+        #expect(result.state == .completed)
+        #expect(try contents(result) == data)
+        #expect(result.segments.count > 8)
+        #expect(result.segments.allSatisfy { $0.isComplete })
+        #expect(coversContiguously(result.segments, total: Int64(data.count)))
+        let starts = file.requests.compactMap { $0.value(forHTTPHeaderField: "Range") }
+            .compactMap { MockURLProtocol.parseRange($0, total: data.count)?.0 }
+        #expect(starts.contains { $0 > slowStart })   // another connection fetched part of the slow segment
+        #expect(try leftoverTempFiles(dir).isEmpty)
+    }
+
+    @Test func resumeAfterSplitFetchesOnlyWhatIsLeft() async throws {
+        let dir = try makeTempDir()
+        let data = testData(16 * 1024 * 1024)
+        let (url, file) = MockServer.serve(.init(data: data, chunkDelay: 0.05, delayOnlyAt: 7 * data.count / 8))
+        let streamer = MockServer.streamer()
+        let noDelay = noDelay
+        let split = Mutex(false)
+        let task = Task {
+            await runDownload(DownloadRecord(url: url, directory: dir), streamer: streamer, retryDelay: noDelay, onProgress: { progress in
+                if progress.segments.count > 8 { split.withLock { $0 = true } }
+            })
+        }
+        let deadline = ContinuousClock.now + .seconds(10)
+        while !split.withLock({ $0 }), ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(20)) }
+        #expect(split.withLock { $0 }, "no progress report showed a split within 10 s")
+        task.cancel()
+        // As the queue would: through downloads.json and back.
+        let paused = try JSONDecoder().decode(DownloadRecord.self, from: JSONEncoder().encode(await task.value))
+
+        #expect(paused.state == .paused)
+        #expect(paused.segments.count > 8)
+        let unfinished = paused.segments.filter { !$0.isComplete }
+        #expect(!unfinished.isEmpty)
+
+        file.state.withLock { $0.chunkDelay = 0 }
+        let before = file.requests.count
+        let result = await runDownload(paused, streamer: streamer, retryDelay: noDelay)
+
+        #expect(result.state == .completed)
+        #expect(try contents(result) == data)
+        #expect(coversContiguously(result.segments, total: Int64(data.count)))
+        let resumed = file.requests[before...].compactMap { $0.value(forHTTPHeaderField: "Range") }
+            .compactMap { MockURLProtocol.parseRange($0, total: data.count) }
+        let ranges = Set(resumed.map { "\($0.0)-\($0.1)" })
+        for segment in unfinished { #expect(ranges.contains("\(segment.nextOffset)-\(segment.end)")) }
+        let written = paused.segments.map { $0.start..<$0.nextOffset }
+        #expect(resumed.allSatisfy { range in !written.contains { $0.contains(Int64(range.0)) } })
     }
 }

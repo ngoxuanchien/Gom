@@ -14,6 +14,7 @@ final class MockFile: Sendable {
         var status: Int? = nil         // force this status on every request (e.g. 403)
         var chunkSize = 64 * 1024
         var chunkDelay: TimeInterval = 0
+        var delayOnlyAt: Int? = nil    // if set, chunkDelay applies only to the range request starting at this offset
         var requests: [URLRequest] = []
         var omitContentLength = false  // send 200 responses without Content-Length, like a streamed body
         var rotateETag = false         // every response carries a new ETag, like a server farm with per-node ETags
@@ -80,9 +81,11 @@ final class MockURLProtocol: URLProtocol, @unchecked Sendable {
         let response = HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: "HTTP/1.1", headerFields: headers)!
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
 
+        let rangeStart = request.value(forHTTPHeaderField: "Range").flatMap { Self.parseRange($0, total: config.data.count)?.0 }
+        let delay = config.delayOnlyAt.map { $0 == rangeStart ? config.chunkDelay : 0 } ?? config.chunkDelay
         DispatchQueue.global().async { [self] in
             let sent = dropHalfway ? Data(body.prefix(body.count / 2)) : body
-            deliver(sent, from: 0, chunkSize: config.chunkSize, delay: config.chunkDelay, thenDrop: dropHalfway)
+            deliver(sent, from: 0, chunkSize: config.chunkSize, delay: delay, thenDrop: dropHalfway)
         }
     }
 
